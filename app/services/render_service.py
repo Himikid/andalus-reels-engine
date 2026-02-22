@@ -24,6 +24,9 @@ class RenderService:
         draft_video_out: Path,
         subtitle_map_out: Path,
         align_subtitles: bool,
+        subtitle_map_file: Path | None = None,
+        style: str = "fit",
+        variants: str = "clean",
     ) -> bool:
         if not self.make_reel_script.exists():
             return False
@@ -47,14 +50,16 @@ class RenderService:
             "--sheikh",
             sheikh or "Sheikh",
             "--variants",
-            "clean",
+            variants,
             "--style",
-            "fit",
+            style,
             "--output",
             str(draft_video_out),
             "--subtitle-map-output",
             str(subtitle_map_out),
         ]
+        if subtitle_map_file:
+            cmd.extend(["--subtitle-map-file", str(subtitle_map_file)])
         if align_subtitles:
             cmd.append("--align-subtitles")
         if source_video_path:

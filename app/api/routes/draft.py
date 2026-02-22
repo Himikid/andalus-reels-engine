@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 
 from app.core.worker import worker
 from app.models.schemas import (
+    AyahTimingUpdateRequest,
     DraftEstimateResponse,
     DraftGenerateRequest,
     DraftSegmentInput,
@@ -80,6 +81,11 @@ def _resolve_segment(segment: DraftSegmentInput) -> dict:
 
 @router.post("/draft/generate", response_model=DraftResponse)
 def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResponse:
+    active = drafts.active_metadata()
+    if active:
+        running = worker.is_running(f"generate:{active.draft_id}") or worker.is_running(f"final:{active.draft_id}")
+        return drafts.response_for(active, base_url=str(request.base_url).rstrip("/"), running=running)
+
     try:
         raw_segments = payload.segments or [
             DraftSegmentInput(
@@ -116,19 +122,53 @@ def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResp
     base_url = str(request.base_url).rstrip("/")
 
     if created:
-        job_id = f"generate:{metadata.draft_id}"
-
-        def run() -> None:
-            try:
-                pipeline.generate_draft(metadata.draft_id)
-            except Exception as exc:  # noqa: BLE001
-                drafts.update_status(metadata.draft_id, DraftStatus.failed, "failed", error=str(exc))
-
-        worker.submit(job_id, run)
+        try:
+            pipeline.initialize_draft(metadata.draft_id)
+        except Exception as exc:  # noqa: BLE001
+            drafts.update_status(metadata.draft_id, DraftStatus.failed, "failed", error=str(exc))
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     running = worker.is_running(f"generate:{metadata.draft_id}") or worker.is_running(f"final:{metadata.draft_id}")
     fresh = drafts.load_metadata(metadata.draft_id) or metadata
     return drafts.response_for(fresh, base_url=base_url, running=running)
+
+
+@router.get("/draft/current", response_model=DraftResponse | None)
+def get_current_draft(request: Request) -> DraftResponse | None:
+    active = drafts.active_metadata()
+    if not active:
+        return None
+    running = worker.is_running(f"generate:{active.draft_id}") or worker.is_running(f"final:{active.draft_id}")
+    return drafts.response_for(active, base_url=str(request.base_url).rstrip("/"), running=running)
+
+
+@router.post("/draft/update-ayah-timings", response_model=DraftResponse)
+def update_ayah_timings(payload: AyahTimingUpdateRequest, request: Request) -> DraftResponse:
+    metadata = drafts.load_metadata(payload.draft_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    draft_dir = drafts.draft_dir(payload.draft_id)
+    subtitles.save_ayah_timing_map(draft_dir, payload.chunks)
+    updated = drafts.update_status(payload.draft_id, DraftStatus.ready_for_timing, "timings_updated")
+    return drafts.response_for(updated, base_url=str(request.base_url).rstrip("/"), running=False)
+
+
+@router.post("/draft/prepare-subtitles", response_model=DraftResponse)
+def prepare_subtitles(payload: RenderFinalRequest, request: Request) -> DraftResponse:
+    metadata = drafts.load_metadata(payload.draft_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    job_id = f"generate:{payload.draft_id}"
+
+    def run() -> None:
+        try:
+            pipeline.generate_draft(payload.draft_id)
+        except Exception as exc:  # noqa: BLE001
+            drafts.update_status(payload.draft_id, DraftStatus.failed, "failed", error=str(exc))
+
+    worker.submit(job_id, run)
+    fresh = drafts.load_metadata(payload.draft_id) or metadata
+    return drafts.response_for(fresh, base_url=str(request.base_url).rstrip("/"), running=True)
 
 
 @router.post("/draft/update-subtitles", response_model=DraftResponse)
@@ -182,6 +222,35 @@ def list_drafts(request: Request) -> list[DraftResponse]:
     return rows
 
 
+@router.delete("/draft/{draft_id}")
+def delete_draft(draft_id: str) -> dict:
+    running = worker.is_running(f"generate:{draft_id}") or worker.is_running(f"final:{draft_id}")
+    if running:
+        raise HTTPException(status_code=409, detail="Draft is currently running.")
+    deleted = drafts.delete_draft(draft_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    return {"ok": True, "deleted": draft_id}
+
+
+@router.delete("/drafts/completed")
+def delete_completed_drafts() -> dict:
+    active_ids = {
+        metadata.draft_id
+        for metadata in drafts.list_metadata()
+        if worker.is_running(f"generate:{metadata.draft_id}") or worker.is_running(f"final:{metadata.draft_id}")
+    }
+    deleted = 0
+    for metadata in drafts.list_metadata():
+        if metadata.draft_id in active_ids:
+            continue
+        if metadata.status != DraftStatus.completed:
+            continue
+        if drafts.delete_draft(metadata.draft_id):
+            deleted += 1
+    return {"ok": True, "deleted_count": deleted}
+
+
 @router.get("/draft/{draft_id}/artifact/{artifact_name}")
 def stream_artifact(draft_id: str, artifact_name: str) -> FileResponse:
     metadata = drafts.load_metadata(draft_id)
@@ -189,6 +258,8 @@ def stream_artifact(draft_id: str, artifact_name: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Draft not found")
 
     allowed = {
+        "ayah_timing_map": "ayah_timing_map.json",
+        "ayah_timing_map_edited": "ayah_timing_map_edited.json",
         "draft_video": "draft.mp4",
         "audio": "audio.wav",
         "subtitle_map": "subtitle_map.json",

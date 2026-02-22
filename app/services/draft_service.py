@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -66,6 +67,8 @@ class DraftService:
             request=req.model_dump(mode="json"),
             artifacts={
                 "metadata": str(draft_dir / "metadata.json"),
+                "ayah_timing_map": str(draft_dir / "ayah_timing_map.json"),
+                "ayah_timing_map_edited": str(draft_dir / "ayah_timing_map_edited.json"),
                 "draft_video": str(draft_dir / "draft.mp4"),
                 "audio": str(draft_dir / "audio.wav"),
                 "subtitle_map": str(draft_dir / "subtitle_map.json"),
@@ -107,7 +110,15 @@ class DraftService:
     def response_for(self, metadata: DraftMetadata, base_url: str, running: bool = False) -> DraftResponse:
         urls = {
             key: f"{base_url}/draft/{metadata.draft_id}/artifact/{key}"
-            for key in ["draft_video", "audio", "subtitle_map", "subtitle_map_edited", "final_video"]
+            for key in [
+                "ayah_timing_map",
+                "ayah_timing_map_edited",
+                "draft_video",
+                "audio",
+                "subtitle_map",
+                "subtitle_map_edited",
+                "final_video",
+            ]
         }
         return DraftResponse(
             draft_id=metadata.draft_id,
@@ -127,3 +138,49 @@ class DraftService:
                 items.append(metadata)
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return items
+
+    def active_metadata(self) -> DraftMetadata | None:
+        active_statuses = {
+            DraftStatus.created,
+            DraftStatus.ready_for_timing,
+            DraftStatus.generating,
+            DraftStatus.ready_for_edit,
+            DraftStatus.rendering_final,
+        }
+        for item in self.list_metadata():
+            if item.status in active_statuses:
+                return item
+        return None
+
+    def _hash_index_path(self) -> Path:
+        return settings.drafts_dir / "index" / "request_hash.json"
+
+    def _remove_from_hash_index(self, draft_id: str) -> None:
+        path = self._hash_index_path()
+        index = read_json(path, default={}) or {}
+        if not isinstance(index, dict):
+            return
+        removed = False
+        for key, value in list(index.items()):
+            if value == draft_id:
+                index.pop(key, None)
+                removed = True
+        if removed:
+            atomic_write_json(path, index)
+
+    def delete_draft(self, draft_id: str) -> bool:
+        path = self.draft_dir(draft_id)
+        if not path.exists():
+            return False
+        self._remove_from_hash_index(draft_id)
+        shutil.rmtree(path)
+        return True
+
+    def delete_completed_drafts(self) -> int:
+        count = 0
+        for metadata in self.list_metadata():
+            if metadata.status != DraftStatus.completed:
+                continue
+            if self.delete_draft(metadata.draft_id):
+                count += 1
+        return count

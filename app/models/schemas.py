@@ -51,8 +51,50 @@ class SummarySyncResponse(BaseModel):
     paths: list[str]
 
 
+class FavoriteItem(BaseModel):
+    day: int = Field(ge=1, le=30)
+    ayah_ref: str
+    theme_type: Literal["Dua", "Famous Ayah"]
+    short_title: str
+    summary: str | None = None
+    references: list[dict] | None = None
+
+
+class FavoriteSyncRequest(BaseModel):
+    items: list[FavoriteItem]
+    full_refresh: bool = True
+
+
+class FavoriteSyncResponse(BaseModel):
+    count: int
+    path: str
+
+
+class QueueBuildRequest(BaseModel):
+    days: list[int] = Field(default_factory=list)
+    include_theme_types: list[Literal["Dua", "Famous Ayah"]] = Field(default_factory=list)
+    full_refresh: bool = True
+
+
+class QueueBuildResponse(BaseModel):
+    count: int
+    path: str
+
+
+class LocalBundleImportRequest(BaseModel):
+    bundle_path: str = "data/inbox/sync_bundle.json"
+
+
+class LocalBundleImportResponse(BaseModel):
+    bundle_path: str
+    marker_days_synced: int
+    marker_rows_synced: int
+    summary_days_synced: int
+
+
 class DraftStatus(str, Enum):
     created = "created"
+    ready_for_timing = "ready_for_timing"
     generating = "generating"
     ready_for_edit = "ready_for_edit"
     rendering_final = "rendering_final"
@@ -139,6 +181,21 @@ class SubtitleChunk(BaseModel):
 class SubtitleUpdateRequest(BaseModel):
     draft_id: str
     chunks: list[SubtitleChunk]
+
+
+class AyahTimingChunk(BaseModel):
+    segment_id: str
+    day: int = Field(ge=1, le=30)
+    surah_number: int = Field(ge=1, le=114)
+    ayah: int = Field(ge=1)
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+    source_id: str | None = None
+
+
+class AyahTimingUpdateRequest(BaseModel):
+    draft_id: str
+    chunks: list[AyahTimingChunk]
 
 
 class RenderFinalRequest(BaseModel):

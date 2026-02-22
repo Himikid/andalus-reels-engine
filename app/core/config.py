@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     markers_dir: Path = Path("data/markers")
     summaries_dir: Path = Path("data/summaries")
+    favorites_dir: Path = Path("data/favorites")
+    queue_dir: Path = Path("data/queue")
     drafts_dir: Path = Path("data/drafts")
     cache_videos_dir: Path = Path("data/cache/videos")
     tmp_dir: Path = Path("data/tmp")

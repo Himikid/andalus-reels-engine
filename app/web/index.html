@@ -19,18 +19,22 @@
       button { border: 0; border-radius: 8px; background: #1d6a4d; color: #fff; padding: 8px 12px; cursor: pointer; }
       button.secondary { background: #3b4c42; }
       button.ghost { background: #e7efea; color: #193024; }
+      a.ghost { background: #e7efea; color: #193024; border-radius: 8px; padding: 8px 12px; display: inline-block; }
       .muted { color: #55685d; font-size: 13px; }
+      .progress-track { height: 8px; border-radius: 999px; background: #dde8e2; overflow: hidden; margin-top: 8px; }
+      .progress-fill { height: 100%; width: 0%; background: #1d6a4d; transition: width 240ms ease; }
+      .cli-box { background: #0f1713; color: #d8f0df; padding: 8px 10px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .draft-row { border: 1px solid #d7e1da; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fdfefe; }
       .draft-row.active { border-color: #1d6a4d; background: #eef7f1; }
       .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .pill { font-size: 12px; border: 1px solid #cad6cf; border-radius: 999px; padding: 2px 8px; }
-      .subtitle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-      .subtitle-table th, .subtitle-table td { border-bottom: 1px solid #e1e8e4; padding: 6px; text-align: left; }
-      .subtitle-table input { padding: 6px; }
-      .subtitle-table .text-cell input { min-width: 360px; }
+      .subtitle-table, .timing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .subtitle-table th, .subtitle-table td, .timing-table th, .timing-table td { border-bottom: 1px solid #e1e8e4; padding: 8px; text-align: left; vertical-align: top; }
+      .subtitle-table input, .timing-table input { padding: 6px; }
+      .subtitle-table .text-cell textarea { min-width: 420px; min-height: 86px; resize: vertical; }
       pre { background: #0f1713; color: #d8f0df; padding: 10px; border-radius: 10px; overflow: auto; max-height: 180px; }
       video, audio { width: 100%; margin-top: 8px; border-radius: 10px; background: #000; }
-      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } .subtitle-table .text-cell input { min-width: 220px; } }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } .subtitle-table .text-cell textarea { min-width: 240px; } }
     </style>
   </head>
   <body>
@@ -40,7 +44,7 @@
 
       <div class="grid">
         <div class="card">
-          <h2>Synced Days (from website)</h2>
+          <h2>Synced Surahs</h2>
           <p class="muted">Markers are synced from the website repo script. Manual JSON paste is disabled.</p>
           <div id="available-days" class="muted">Loading...</div>
 
@@ -60,7 +64,18 @@
             <button id="clear-segments-btn" class="ghost">Clear Chain</button>
           </div>
           <div id="segment-chain" class="muted" style="margin-top:8px;">No segments in chain.</div>
-          <button id="generate-btn" style="margin-top:8px;">Generate Chained Draft</button>
+          <button id="generate-btn" style="margin-top:8px;">Start Draft From Selection</button>
+
+          <h2 style="margin-top:20px;">Favorites Queue</h2>
+          <div class="row">
+            <div class="field" style="min-width:140px; margin:0;">
+              <label style="font-size:12px;" for="fav-day">Favorites Day</label>
+              <select id="fav-day"></select>
+            </div>
+            <button id="build-queue-btn" class="ghost">Load Selected Day Into Chain</button>
+            <button id="refresh-queue-btn" class="ghost">Refresh Queue</button>
+          </div>
+          <div id="queue-list" class="muted" style="margin-top:8px;">Queue not built yet.</div>
 
           <h2 style="margin-top:20px;">Server Log</h2>
           <pre id="log">Ready.</pre>
@@ -68,27 +83,40 @@
 
         <div class="card">
           <div class="row" style="justify-content:space-between; margin-bottom:8px;">
-            <h2 style="margin:0;">Drafts</h2>
-            <button id="refresh-btn" class="ghost">Refresh</button>
+            <h2 style="margin:0;">Current Session</h2>
+            <button id="refresh-current-btn" class="ghost">Refresh</button>
           </div>
-          <div id="drafts-list"></div>
+          <div class="muted">Single active draft per server. Finish or delete current draft before starting another.</div>
 
           <hr style="border:none;border-top:1px solid #e1e8e4; margin:14px 0;" />
-          <h2>Selected Draft</h2>
-          <div id="selected-meta" class="muted">No draft selected.</div>
+          <h2>Active Draft</h2>
+          <div id="selected-meta" class="muted">No active draft.</div>
+          <div id="progress-block" style="margin-top:10px;">
+            <div id="progress-label" class="muted">Idle</div>
+            <div id="progress-cli" class="cli-box">[----------] 0%</div>
+            <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+          </div>
           <div class="row" style="margin-top:8px;">
-            <button id="render-final-btn" class="secondary" disabled>Render Final</button>
-            <button id="save-subtitles-btn" disabled>Save Subtitle Edits</button>
+            <button id="save-timings-btn" disabled>1) Save Ayah Timing Edits</button>
+            <button id="prepare-subtitles-btn" class="secondary" disabled>2) Prepare Draft Audio + Subtitle Map</button>
+            <button id="save-subtitles-btn" disabled>3) Save Subtitle Text Edits</button>
+            <button id="render-final-btn" class="secondary" disabled>4) Render Final Reel</button>
+            <button id="delete-draft-btn" class="ghost" disabled>Reset Current Session</button>
+            <a id="download-final-btn" class="ghost" style="display:none; text-decoration:none;" download>Download Final</a>
           </div>
 
           <div id="players" style="display:none; margin-top:10px;">
-            <h3 style="font-size:14px;">Draft Preview</h3>
-            <video id="draft-video" controls></video>
-            <h3 style="font-size:14px; margin-top:12px;">Final Render</h3>
-            <video id="final-video" controls></video>
+            <h3 style="font-size:14px;">Preview Audio</h3>
+            <audio id="preview-audio" controls></audio>
           </div>
 
-          <h3 style="font-size:14px; margin-top:14px;">Subtitle Rows</h3>
+          <h3 style="font-size:14px; margin-top:14px;">Ayah Timing Rows (Adjust First)</h3>
+          <table class="timing-table" id="timing-table" style="display:none;">
+            <thead><tr><th>Ayah</th><th>Start</th><th>End</th><th>Segment</th></tr></thead>
+            <tbody id="timing-body"></tbody>
+          </table>
+
+          <h3 style="font-size:14px; margin-top:14px;">Subtitle Rows (After Prepare Step)</h3>
           <table class="subtitle-table" id="subtitle-table" style="display:none;">
             <thead><tr><th>Start</th><th>End</th><th>Text</th><th>State</th></tr></thead>
             <tbody id="subtitle-body"></tbody>
@@ -99,15 +127,27 @@
 
     <script>
       const logEl = document.getElementById('log');
-      const draftsListEl = document.getElementById('drafts-list');
+      const queueListEl = document.getElementById('queue-list');
+      const timingTableEl = document.getElementById('timing-table');
+      const timingBodyEl = document.getElementById('timing-body');
       const subtitleTableEl = document.getElementById('subtitle-table');
       const subtitleBodyEl = document.getElementById('subtitle-body');
       const selectedMetaEl = document.getElementById('selected-meta');
+      const progressLabelEl = document.getElementById('progress-label');
+      const progressCliEl = document.getElementById('progress-cli');
+      const progressFillEl = document.getElementById('progress-fill');
+      const saveTimingsBtn = document.getElementById('save-timings-btn');
+      const prepareSubtitlesBtn = document.getElementById('prepare-subtitles-btn');
       const saveBtn = document.getElementById('save-subtitles-btn');
       const renderBtn = document.getElementById('render-final-btn');
+      const deleteDraftBtn = document.getElementById('delete-draft-btn');
+      const refreshCurrentBtn = document.getElementById('refresh-current-btn');
+      const buildQueueBtn = document.getElementById('build-queue-btn');
+      const refreshQueueBtn = document.getElementById('refresh-queue-btn');
+      const favDayEl = document.getElementById('fav-day');
+      const downloadFinalBtn = document.getElementById('download-final-btn');
       const playersEl = document.getElementById('players');
-      const draftVideo = document.getElementById('draft-video');
-      const finalVideo = document.getElementById('final-video');
+      const previewAudio = document.getElementById('preview-audio');
       const availableDaysEl = document.getElementById('available-days');
       const estimateBoxEl = document.getElementById('estimate-box');
       const genDayEl = document.getElementById('gen-day');
@@ -116,8 +156,10 @@
       const genAyahEndEl = document.getElementById('gen-ayah-end');
       const segmentChainEl = document.getElementById('segment-chain');
 
-      let drafts = [];
       let selectedDraft = null;
+      let queueItems = [];
+      let favoriteDays = [];
+      let ayahTimingRows = [];
       let subtitleRows = [];
       let availableDays = [];
       let currentEstimate = null;
@@ -126,6 +168,24 @@
 
       const setLog = (text) => { logEl.textContent = text; };
       const pretty = (obj) => JSON.stringify(obj, null, 2);
+      const escapeHtml = (text) =>
+        String(text ?? '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      const buildCliBar = (pct) => {
+        const clamped = Math.max(0, Math.min(100, pct));
+        const slots = 10;
+        const filled = Math.round((clamped / 100) * slots);
+        return `[${"#".repeat(filled)}${"-".repeat(slots - filled)}] ${clamped}%`;
+      };
+      const formatHMS = (seconds) => {
+        const total = Math.max(0, Math.round(Number(seconds) || 0));
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      };
 
       async function api(url, options = {}) {
         const res = await fetch(url, options);
@@ -137,32 +197,28 @@
         return body;
       }
 
-      function renderDrafts() {
-        draftsListEl.innerHTML = '';
-        if (!drafts.length) {
-          draftsListEl.innerHTML = '<p class="muted">No drafts yet.</p>';
+      function renderTimingRows() {
+        timingBodyEl.innerHTML = '';
+        if (!ayahTimingRows.length) {
+          timingTableEl.style.display = 'none';
           return;
         }
-
-        drafts.forEach((d) => {
-          const div = document.createElement('div');
-          div.className = 'draft-row' + (selectedDraft?.draft_id === d.draft_id ? ' active' : '');
-          div.innerHTML = `
-            <div class="row" style="justify-content:space-between;">
-              <strong>${d.draft_id.slice(0, 8)}...</strong>
-              <span class="pill">${d.status}</span>
-            </div>
-            <div class="muted" style="margin:4px 0;">Day ${d.metadata.request.day} · ${d.metadata.request.surah_number}:${d.metadata.request.ayah_start}-${d.metadata.request.ayah_end}</div>
-            <div class="row">
-              <button class="ghost" data-open="${d.draft_id}">Open</button>
-            </div>
+        timingTableEl.style.display = '';
+        ayahTimingRows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row.surah_number}:${row.ayah}</td>
+            <td><input data-k="start" data-i="${idx}" type="number" step="0.01" value="${row.start ?? 0}" /></td>
+            <td><input data-k="end" data-i="${idx}" type="number" step="0.01" value="${row.end ?? 0}" /></td>
+            <td>${row.segment_id || ''}</td>
           `;
-          draftsListEl.appendChild(div);
+          timingBodyEl.appendChild(tr);
         });
-
-        draftsListEl.querySelectorAll('[data-open]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            await openDraft(btn.getAttribute('data-open'));
+        timingBodyEl.querySelectorAll('input').forEach((field) => {
+          field.addEventListener('input', () => {
+            const i = Number(field.dataset.i);
+            const k = field.dataset.k;
+            ayahTimingRows[i][k] = Number(field.value);
           });
         });
       }
@@ -181,41 +237,184 @@
           tr.innerHTML = `
             <td><input data-k="start" data-i="${idx}" type="number" step="0.01" value="${row.start ?? 0}" /></td>
             <td><input data-k="end" data-i="${idx}" type="number" step="0.01" value="${row.end ?? 0}" /></td>
-            <td class="text-cell"><input data-k="text" data-i="${idx}" value="${(row.text || '').replace(/"/g, '&quot;')}" /></td>
+            <td class="text-cell"><textarea data-k="text" data-i="${idx}">${escapeHtml(row.text || '')}</textarea></td>
             <td><span class="pill">${stateLabel}</span></td>
           `;
           subtitleBodyEl.appendChild(tr);
         });
 
-        subtitleBodyEl.querySelectorAll('input').forEach((input) => {
-          input.addEventListener('input', () => {
-            const i = Number(input.dataset.i);
-            const k = input.dataset.k;
-            const v = input.value;
+        subtitleBodyEl.querySelectorAll('input, textarea').forEach((field) => {
+          field.addEventListener('input', () => {
+            const i = Number(field.dataset.i);
+            const k = field.dataset.k;
+            const v = field.value;
             subtitleRows[i][k] = (k === 'text') ? v : Number(v);
           });
         });
       }
 
-      async function loadDrafts() {
-        drafts = await api('/drafts');
-        renderDrafts();
+      function clearActiveDraftView() {
+        selectedDraft = null;
+        ayahTimingRows = [];
+        subtitleRows = [];
+        renderTimingRows();
+        renderSubtitleRows();
+        playersEl.style.display = 'none';
+        selectedMetaEl.textContent = 'No active draft.';
+        saveTimingsBtn.disabled = true;
+        prepareSubtitlesBtn.disabled = true;
+        saveBtn.disabled = true;
+        renderBtn.disabled = true;
+        deleteDraftBtn.disabled = true;
+        downloadFinalBtn.style.display = 'none';
+        progressLabelEl.textContent = 'Idle';
+        progressCliEl.textContent = buildCliBar(0);
+        progressFillEl.style.width = '0%';
+      }
+
+      function draftProgress(draft) {
+        if (!draft) return { pct: 0, label: 'Idle' };
+        const status = String(draft.status || '');
+        const step = String(draft.metadata?.step || '');
+        if (status === 'failed') return { pct: 100, label: `Failed: ${step || 'error'}` };
+        if (status === 'completed') return { pct: 100, label: 'Completed: final reel ready' };
+        if (status === 'ready_for_timing') return { pct: 20, label: 'Ready: adjust ayah timings' };
+        if (status === 'ready_for_edit') return { pct: 75, label: 'Ready: edit subtitle rows' };
+        if (status === 'rendering_final') {
+          const p = step === 'joining_final' ? 90 : 82;
+          return { pct: p, label: `Rendering final: ${step || 'in progress'}` };
+        }
+        if (status === 'generating') {
+          const map = {
+            resolving_sources: 30,
+            joining_preview: 52,
+            building_subtitle_map: 62,
+            extracting_audio: 72,
+          };
+          let pct = map[step] || 42;
+          if (step.startsWith('processing_')) pct = 42;
+          return { pct, label: `Preparing draft: ${step || 'in progress'}` };
+        }
+        return { pct: 10, label: status || 'Queued' };
+      }
+
+      function renderProgress(draft) {
+        const { pct, label } = draftProgress(draft);
+        progressLabelEl.textContent = label;
+        progressCliEl.textContent = buildCliBar(pct);
+        progressFillEl.style.width = `${pct}%`;
+      }
+
+      function renderQueue() {
+        const selectedDay = Number(favDayEl.value);
+        const scoped = queueItems.filter((item) => Number(item.day) === selectedDay);
+        if (!scoped.length) {
+          queueListEl.innerHTML = '<p class="muted">No favorites loaded for selected day.</p>';
+          return;
+        }
+        queueListEl.innerHTML = `
+          <div class="draft-row">
+            <div class="row" style="justify-content:space-between;">
+              <strong>Day ${selectedDay} Favorites</strong>
+              <span class="pill">${scoped.length} segments</span>
+            </div>
+            <div class="muted" style="margin-top:6px;">
+              ${scoped.map((item) => `${item.ayah_ref} — ${item.short_title || ''}`).join('<br/>')}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderFavoriteDays() {
+        favDayEl.innerHTML = '';
+        if (!favoriteDays.length) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'No days';
+          favDayEl.appendChild(option);
+          return;
+        }
+        favoriteDays.forEach((day) => {
+          const option = document.createElement('option');
+          option.value = String(day);
+          option.textContent = `Day ${day}`;
+          favDayEl.appendChild(option);
+        });
+      }
+
+      async function loadFavoriteDays() {
+        const payload = await api('/favorites');
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        const set = new Set();
+        items.forEach((item) => {
+          const day = Number(item.day);
+          if (Number.isFinite(day) && day > 0) set.add(day);
+        });
+        favoriteDays = Array.from(set).sort((a, b) => a - b);
+        renderFavoriteDays();
+      }
+
+      async function loadQueue() {
+        const data = await api('/queue/current');
+        const items = data.items;
+        queueItems = Array.isArray(items) ? items : [];
+        renderQueue();
+      }
+
+      function clearChain() {
+        chainSegments = [];
+        renderChain();
+        setLog('Chain cleared.');
+      }
+
+      async function loadCurrentDraft() {
+        const current = await api('/draft/current');
+        if (!current) {
+          clearActiveDraftView();
+          return;
+        }
+        await openDraft(current.draft_id);
       }
 
       function renderAvailableDays() {
         if (!availableDays.length) {
-          availableDaysEl.innerHTML = '<p class="muted">No synced marker days found yet.</p>';
+          availableDaysEl.innerHTML = '<p class="muted">No synced marker data found yet.</p>';
           return;
         }
-        availableDaysEl.innerHTML = availableDays
+        availableDaysEl.innerHTML = '<p class="muted">Loading surah summary…</p>';
+      }
+
+      async function renderSurahSummary() {
+        if (!availableDays.length) return;
+        const responses = await Promise.all(
+          availableDays.map((row) => api(`/markers/day/${row.day}/index`).catch(() => ({ day: row.day, surahs: [] })))
+        );
+        const map = new Map();
+        responses.forEach((dayPayload) => {
+          const day = Number(dayPayload.day);
+          const surahs = Array.isArray(dayPayload.surahs) ? dayPayload.surahs : [];
+          surahs.forEach((surah) => {
+            const key = Number(surah.surah_number);
+            if (!map.has(key)) {
+              map.set(key, { surah_number: key, surah_name: surah.surah_name || `Surah ${key}`, days: [] });
+            }
+            const row = map.get(key);
+            row.days.push({ day, ayah_min: surah.ayah_min, ayah_max: surah.ayah_max });
+          });
+        });
+        const rows = Array.from(map.values()).sort((a, b) => a.surah_number - b.surah_number);
+        availableDaysEl.innerHTML = rows
           .map((row) => {
-            const summary = row.has_summary ? ` · ${row.summary_title || 'Summary synced'}` : ' · No summary yet';
+            const dayText = row.days
+              .sort((a, b) => a.day - b.day)
+              .map((d) => `D${d.day}: ${d.ayah_min}-${d.ayah_max}`)
+              .join(' · ');
             return `<div class="draft-row" style="margin-bottom:6px;">
               <div class="row" style="justify-content:space-between;">
-                <strong>Day ${row.day}</strong>
-                <span class="pill">${row.marker_count} markers</span>
+                <strong>${row.surah_number} - ${row.surah_name}</strong>
+                <span class="pill">${row.days.length} day(s)</span>
               </div>
-              <div class="muted">${summary}</div>
+              <div class="muted">${dayText}</div>
             </div>`;
           })
           .join('');
@@ -243,7 +442,7 @@
                 <strong>#${idx + 1} Day ${seg.day}</strong>
                 <button class=\"ghost\" data-remove-segment=\"${idx}\">Remove</button>
               </div>
-              <div class=\"muted\">${seg.surah_number}:${seg.ayah_start}-${seg.ayah_end} · ${seg.duration}s · ${seg.sheikh || 'Unknown'} · ${seg.source_id || 'source:auto'}</div>
+              <div class=\"muted\">${seg.surah_number}:${seg.ayah_start}-${seg.ayah_end} · ${formatHMS(seg.duration)} · ${seg.sheikh || 'Unknown'} · ${seg.source_id || 'source:auto'}</div>
             </div>`
           ))
           .join('');
@@ -260,6 +459,7 @@
       async function loadAvailableDays() {
         availableDays = await api('/markers/available');
         renderAvailableDays();
+        await renderSurahSummary();
         const dayOptions = availableDays.map((row) => row.day);
         if (dayOptions.length) {
           setSelectOptions(genDayEl, dayOptions);
@@ -350,8 +550,8 @@
         currentEstimate = await api(`/draft/estimate?${query}`);
         const source = currentEstimate.source_url || 'not provided';
         estimateBoxEl.innerHTML = `
-          Clip Start: <strong>${currentEstimate.estimated_clip_start}s</strong><br/>
-          Duration: <strong>${currentEstimate.estimated_duration}s</strong><br/>
+          Clip Start: <strong>${formatHMS(currentEstimate.estimated_clip_start)}</strong><br/>
+          Duration: <strong>${formatHMS(currentEstimate.estimated_duration)}</strong><br/>
           Sheikh: <strong>${currentEstimate.estimated_sheikh || 'Unknown'}</strong><br/>
           Source: <strong>${source}</strong><br/>
           Markers in range: <strong>${currentEstimate.marker_count_in_range}</strong>
@@ -361,30 +561,85 @@
       async function openDraft(draftId) {
         selectedDraft = await api(`/draft/${draftId}`);
         selectedMetaEl.textContent = `Draft ${selectedDraft.draft_id} · ${selectedDraft.status}${selectedDraft.running ? ' · Running' : ''}`;
-        saveBtn.disabled = false;
-        renderBtn.disabled = false;
+        renderProgress(selectedDraft);
+        saveTimingsBtn.disabled = false;
+        prepareSubtitlesBtn.disabled = false;
+        saveBtn.disabled = selectedDraft.status !== 'ready_for_edit' && selectedDraft.status !== 'completed';
+        renderBtn.disabled = selectedDraft.status !== 'ready_for_edit' && selectedDraft.status !== 'completed';
+        deleteDraftBtn.disabled = false;
+
+        const tmEdited = selectedDraft.artifact_urls.ayah_timing_map_edited;
+        const tm = selectedDraft.artifact_urls.ayah_timing_map;
+        let timingMap = { chunks: [] };
+        try { timingMap = await api(tmEdited); } catch (_) {
+          try { timingMap = await api(tm); } catch (_) { timingMap = { chunks: [] }; }
+        }
+        ayahTimingRows = Array.isArray(timingMap.chunks) ? timingMap.chunks : [];
+        renderTimingRows();
 
         const smEdited = selectedDraft.artifact_urls.subtitle_map_edited;
         const sm = selectedDraft.artifact_urls.subtitle_map;
         let map = { chunks: [] };
-        try { map = await api(smEdited); } catch (_) { map = await api(sm); }
+        try { map = await api(smEdited); } catch (_) {
+          try { map = await api(sm); } catch (_) { map = { chunks: [] }; }
+        }
         subtitleRows = Array.isArray(map.chunks) ? map.chunks : [];
         renderSubtitleRows();
 
-        draftVideo.src = selectedDraft.artifact_urls.draft_video;
-        finalVideo.src = selectedDraft.artifact_urls.final_video;
-        playersEl.style.display = '';
-
-        await loadDrafts();
+        previewAudio.src = selectedDraft.artifact_urls.audio;
+        downloadFinalBtn.href = selectedDraft.artifact_urls.final_video;
+        downloadFinalBtn.download = `${selectedDraft.draft_id}-final.mp4`;
+        downloadFinalBtn.style.display = (selectedDraft.status === 'completed') ? '' : 'none';
+        playersEl.style.display = (selectedDraft.status === 'ready_for_edit' || selectedDraft.status === 'completed') ? '' : 'none';
       }
-
-      document.getElementById('refresh-btn').addEventListener('click', async () => {
+      refreshCurrentBtn.addEventListener('click', async () => {
         try {
-          await loadDrafts();
-          setLog('Draft list refreshed.');
+          await loadCurrentDraft();
+          setLog('Current session refreshed.');
         } catch (err) {
           setLog(String(err));
         }
+      });
+
+      buildQueueBtn.addEventListener('click', async () => {
+        try {
+          const selectedDay = Number(favDayEl.value);
+          if (!Number.isFinite(selectedDay) || selectedDay < 1) {
+            setLog('Select a valid favorites day first.');
+            return;
+          }
+          const out = await api('/queue/from-favorites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: [selectedDay], include_theme_types: ["Dua", "Famous Ayah"], full_refresh: true }),
+          });
+          const queue = await api('/queue/current');
+          const items = Array.isArray(queue.items) ? queue.items : [];
+          chainSegments = items.map((row) => ({
+            day: row.day,
+            surah_number: row.surah_number,
+            ayah_start: row.ayah_start,
+            ayah_end: row.ayah_end,
+          }));
+          renderChain();
+          setLog(`Loaded ${chainSegments.length} favorite segments for day ${selectedDay}.`);
+          await loadQueue();
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      refreshQueueBtn.addEventListener('click', async () => {
+        try {
+          await loadQueue();
+          setLog('Queue refreshed.');
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      favDayEl.addEventListener('change', () => {
+        renderQueue();
       });
 
       document.getElementById('generate-btn').addEventListener('click', async () => {
@@ -433,9 +688,9 @@
         }
       });
 
-      document.getElementById('clear-segments-btn').addEventListener('click', () => {
-        chainSegments = [];
-        renderChain();
+      document.getElementById('clear-segments-btn').addEventListener('click', (event) => {
+        event.preventDefault();
+        clearChain();
       });
 
       saveBtn.addEventListener('click', async () => {
@@ -450,6 +705,30 @@
         }
       });
 
+      saveTimingsBtn.addEventListener('click', async () => {
+        if (!selectedDraft) return;
+        try {
+          const payload = { draft_id: selectedDraft.draft_id, chunks: ayahTimingRows };
+          const out = await api('/draft/update-ayah-timings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+          await openDraft(selectedDraft.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      prepareSubtitlesBtn.addEventListener('click', async () => {
+        if (!selectedDraft) return;
+        try {
+          const payload = { draft_id: selectedDraft.draft_id };
+          const out = await api('/draft/prepare-subtitles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+          await openDraft(selectedDraft.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
       renderBtn.addEventListener('click', async () => {
         if (!selectedDraft) return;
         try {
@@ -457,6 +736,29 @@
           const out = await api('/render/final', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           setLog(pretty(out));
           await openDraft(selectedDraft.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      deleteDraftBtn.addEventListener('click', async () => {
+        if (!selectedDraft) return;
+        try {
+          const out = await api(`/draft/${selectedDraft.draft_id}`, { method: 'DELETE' });
+          setLog(pretty(out));
+          selectedDraft = null;
+          ayahTimingRows = [];
+          subtitleRows = [];
+          renderTimingRows();
+          renderSubtitleRows();
+          playersEl.style.display = 'none';
+          selectedMetaEl.textContent = 'No active draft.';
+          saveTimingsBtn.disabled = true;
+          prepareSubtitlesBtn.disabled = true;
+          saveBtn.disabled = true;
+          renderBtn.disabled = true;
+          deleteDraftBtn.disabled = true;
+          downloadFinalBtn.style.display = 'none';
         } catch (err) {
           setLog(String(err));
         }
@@ -482,7 +784,10 @@
         });
       });
 
-      loadDrafts().catch((err) => setLog(String(err)));
+      clearActiveDraftView();
+      loadCurrentDraft().catch((err) => setLog(String(err)));
+      loadFavoriteDays().catch((err) => setLog(String(err)));
+      loadQueue().catch(() => {});
       loadAvailableDays()
         .then(() => loadEstimate())
         .catch((err) => {
@@ -495,8 +800,9 @@
           if (selectedDraft) {
             await openDraft(selectedDraft.draft_id);
           } else {
-            await loadDrafts();
+            await loadCurrentDraft();
           }
+          await loadQueue();
           const currentDay = Number(genDayEl.value || 0);
           await loadAvailableDays();
           if (Number(genDayEl.value || 0) !== currentDay) {
