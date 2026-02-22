@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
@@ -7,6 +5,7 @@ from app.core.worker import worker
 from app.models.schemas import (
     DraftEstimateResponse,
     DraftGenerateRequest,
+    DraftSegmentInput,
     DraftResponse,
     DraftStatus,
     RenderFinalRequest,
@@ -24,10 +23,27 @@ subtitles = SubtitleService()
 markers = MarkerService()
 
 
+@router.get("/subtitles/verified")
+def list_verified_subtitles(day: int | None = None, surah_number: int | None = None) -> list[dict]:
+    return subtitles.list_verified(day=day, surah_number=surah_number)
+
+
 @router.get("/draft/estimate", response_model=DraftEstimateResponse)
-def draft_estimate(day: int, surah_number: int, ayah_start: int, ayah_end: int) -> DraftEstimateResponse:
+def draft_estimate(
+    day: int,
+    surah_number: int,
+    ayah_start: int,
+    ayah_end: int,
+    source_id: str | None = None,
+) -> DraftEstimateResponse:
     try:
-        estimate = markers.estimate_draft_inputs(day=day, surah_number=surah_number, ayah_start=ayah_start, ayah_end=ayah_end)
+        estimate = markers.estimate_draft_inputs(
+            day=day,
+            surah_number=surah_number,
+            ayah_start=ayah_start,
+            ayah_end=ayah_end,
+            source_id=source_id,
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DraftEstimateResponse(
@@ -39,30 +55,64 @@ def draft_estimate(day: int, surah_number: int, ayah_start: int, ayah_end: int) 
     )
 
 
+def _resolve_segment(segment: DraftSegmentInput) -> dict:
+    estimate = markers.estimate_draft_inputs(
+        day=segment.day,
+        surah_number=segment.surah_number,
+        ayah_start=segment.ayah_start,
+        ayah_end=segment.ayah_end,
+        source_id=segment.source_id,
+    )
+    return {
+        "segment_id": f"day{segment.day}-s{segment.surah_number}-a{segment.ayah_start}-{segment.ayah_end}",
+        "day": segment.day,
+        "surah_number": segment.surah_number,
+        "ayah_start": segment.ayah_start,
+        "ayah_end": segment.ayah_end,
+        "clip_start": segment.clip_start if segment.clip_start is not None else estimate["estimated_clip_start"],
+        "duration": segment.duration if segment.duration is not None else estimate["estimated_duration"],
+        "sheikh": segment.sheikh or estimate["estimated_sheikh"],
+        "youtube_url": str(segment.youtube_url) if segment.youtube_url else estimate["source_url"],
+        "source_video_path": segment.source_video_path or estimate["source_video_path"],
+        "source_id": segment.source_id or estimate.get("source_id"),
+        "marker_count_in_range": estimate["marker_count_in_range"],
+    }
+
+
 @router.post("/draft/generate", response_model=DraftResponse)
 def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResponse:
     try:
-        estimate = markers.estimate_draft_inputs(
-            day=payload.day,
-            surah_number=payload.surah_number,
-            ayah_start=payload.ayah_start,
-            ayah_end=payload.ayah_end,
-        )
+        raw_segments = payload.segments or [
+            DraftSegmentInput(
+                day=int(payload.day),
+                surah_number=int(payload.surah_number),
+                ayah_start=int(payload.ayah_start),
+                ayah_end=int(payload.ayah_end),
+                clip_start=payload.clip_start,
+                duration=payload.duration,
+                sheikh=payload.sheikh,
+                youtube_url=payload.youtube_url,
+                source_video_path=payload.source_video_path,
+            )
+        ]
+        resolved_segments = [_resolve_segment(segment) for segment in raw_segments]
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     resolved = DraftGenerateRequest(
-        day=payload.day,
-        surah_number=payload.surah_number,
-        ayah_start=payload.ayah_start,
-        ayah_end=payload.ayah_end,
-        clip_start=payload.clip_start if payload.clip_start is not None else estimate["estimated_clip_start"],
-        duration=payload.duration if payload.duration is not None else estimate["estimated_duration"],
-        sheikh=payload.sheikh or estimate["estimated_sheikh"],
-        youtube_url=payload.youtube_url or estimate["source_url"],
-        source_video_path=payload.source_video_path or estimate["source_video_path"],
+        day=raw_segments[0].day if raw_segments else payload.day,
+        surah_number=raw_segments[0].surah_number if raw_segments else payload.surah_number,
+        ayah_start=raw_segments[0].ayah_start if raw_segments else payload.ayah_start,
+        ayah_end=raw_segments[0].ayah_end if raw_segments else payload.ayah_end,
+        clip_start=resolved_segments[0]["clip_start"] if resolved_segments else payload.clip_start,
+        duration=resolved_segments[0]["duration"] if resolved_segments else payload.duration,
+        sheikh=resolved_segments[0]["sheikh"] if resolved_segments else payload.sheikh,
+        youtube_url=resolved_segments[0]["youtube_url"] if resolved_segments else payload.youtube_url,
+        source_video_path=resolved_segments[0]["source_video_path"] if resolved_segments else payload.source_video_path,
         style=payload.style,
         variants=payload.variants,
         align_subtitles=payload.align_subtitles,
+        transition_seconds=payload.transition_seconds,
+        segments=resolved_segments,
     )
 
     metadata, created = drafts.create_or_get_by_hash(resolved)

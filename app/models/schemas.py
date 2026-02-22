@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class MarkerItem(BaseModel):
@@ -62,6 +62,32 @@ class DraftStatus(str, Enum):
 
 
 class DraftGenerateRequest(BaseModel):
+    day: int | None = Field(default=None, ge=1, le=30)
+    surah_number: int | None = Field(default=None, ge=1, le=114)
+    ayah_start: int | None = Field(default=None, ge=1)
+    ayah_end: int | None = Field(default=None, ge=1)
+    clip_start: float | None = Field(default=None, ge=0)
+    duration: float | None = Field(default=None, gt=0)
+    sheikh: str | None = None
+    youtube_url: HttpUrl | None = None
+    source_video_path: str | None = None
+    style: str = "fit"
+    variants: str = "clean"
+    align_subtitles: bool = True
+    transition_seconds: float = Field(default=0.45, ge=0, le=2.0)
+    segments: list["DraftSegmentInput"] | None = None
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> "DraftGenerateRequest":
+        if self.segments:
+            return self
+        if None in (self.day, self.surah_number, self.ayah_start, self.ayah_end):
+            raise ValueError("Provide either segments[] or top-level day/surah_number/ayah_start/ayah_end.")
+        return self
+
+
+class DraftSegmentInput(BaseModel):
+    segment_id: str | None = None
     day: int = Field(ge=1, le=30)
     surah_number: int = Field(ge=1, le=114)
     ayah_start: int = Field(ge=1)
@@ -71,9 +97,23 @@ class DraftGenerateRequest(BaseModel):
     sheikh: str | None = None
     youtube_url: HttpUrl | None = None
     source_video_path: str | None = None
-    style: str = "fit"
-    variants: str = "clean"
-    align_subtitles: bool = True
+    source_id: str | None = None
+    marker_count_in_range: int | None = None
+
+
+class ResolvedDraftSegment(BaseModel):
+    segment_id: str
+    day: int
+    surah_number: int
+    ayah_start: int
+    ayah_end: int
+    clip_start: float
+    duration: float
+    sheikh: str | None = None
+    youtube_url: str | None = None
+    source_video_path: str | None = None
+    source_id: str | None = None
+    marker_count_in_range: int
 
 
 class DraftEstimateResponse(BaseModel):
@@ -86,6 +126,7 @@ class DraftEstimateResponse(BaseModel):
     estimated_sheikh: str | None = None
     source_url: str | None = None
     source_video_path: str | None = None
+    source_id: str | None = None
     marker_count_in_range: int
 
 
@@ -93,6 +134,11 @@ class SubtitleChunk(BaseModel):
     start: float = Field(ge=0)
     end: float = Field(ge=0)
     text: str
+    day: int | None = None
+    surah_number: int | None = None
+    ayah: int | None = None
+    source_id: str | None = None
+    verified: bool | None = None
 
 
 class SubtitleUpdateRequest(BaseModel):

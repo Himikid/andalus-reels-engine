@@ -55,7 +55,12 @@
             <p class="muted" style="margin:0 0 6px;">Estimated from synced markers</p>
             <div id="estimate-box" class="muted">Select day/surah/ayah to load estimate.</div>
           </div>
-          <button id="generate-btn">Generate Draft</button>
+          <div class="row">
+            <button id="add-segment-btn" class="ghost">Add Segment</button>
+            <button id="clear-segments-btn" class="ghost">Clear Chain</button>
+          </div>
+          <div id="segment-chain" class="muted" style="margin-top:8px;">No segments in chain.</div>
+          <button id="generate-btn" style="margin-top:8px;">Generate Chained Draft</button>
 
           <h2 style="margin-top:20px;">Server Log</h2>
           <pre id="log">Ready.</pre>
@@ -85,7 +90,7 @@
 
           <h3 style="font-size:14px; margin-top:14px;">Subtitle Rows</h3>
           <table class="subtitle-table" id="subtitle-table" style="display:none;">
-            <thead><tr><th>Start</th><th>End</th><th>Text</th></tr></thead>
+            <thead><tr><th>Start</th><th>End</th><th>Text</th><th>State</th></tr></thead>
             <tbody id="subtitle-body"></tbody>
           </table>
         </div>
@@ -109,6 +114,7 @@
       const genSurahEl = document.getElementById('gen-surah');
       const genAyahStartEl = document.getElementById('gen-ayah-start');
       const genAyahEndEl = document.getElementById('gen-ayah-end');
+      const segmentChainEl = document.getElementById('segment-chain');
 
       let drafts = [];
       let selectedDraft = null;
@@ -116,6 +122,7 @@
       let availableDays = [];
       let currentEstimate = null;
       let dayIndex = { day: null, surahs: [] };
+      let chainSegments = [];
 
       const setLog = (text) => { logEl.textContent = text; };
       const pretty = (obj) => JSON.stringify(obj, null, 2);
@@ -170,10 +177,12 @@
 
         subtitleRows.forEach((row, idx) => {
           const tr = document.createElement('tr');
+          const stateLabel = row.verified ? 'Verified' : 'Draft';
           tr.innerHTML = `
             <td><input data-k="start" data-i="${idx}" type="number" step="0.01" value="${row.start ?? 0}" /></td>
             <td><input data-k="end" data-i="${idx}" type="number" step="0.01" value="${row.end ?? 0}" /></td>
             <td class="text-cell"><input data-k="text" data-i="${idx}" value="${(row.text || '').replace(/"/g, '&quot;')}" /></td>
+            <td><span class="pill">${stateLabel}</span></td>
           `;
           subtitleBodyEl.appendChild(tr);
         });
@@ -219,6 +228,32 @@
           option.value = String(value);
           option.textContent = labelFn ? labelFn(value) : String(value);
           selectEl.appendChild(option);
+        });
+      }
+
+      function renderChain() {
+        if (!chainSegments.length) {
+          segmentChainEl.innerHTML = 'No segments in chain.';
+          return;
+        }
+        segmentChainEl.innerHTML = chainSegments
+          .map((seg, idx) => (
+            `<div class=\"draft-row\" style=\"margin-bottom:6px;\">
+              <div class=\"row\" style=\"justify-content:space-between;\">
+                <strong>#${idx + 1} Day ${seg.day}</strong>
+                <button class=\"ghost\" data-remove-segment=\"${idx}\">Remove</button>
+              </div>
+              <div class=\"muted\">${seg.surah_number}:${seg.ayah_start}-${seg.ayah_end} · ${seg.duration}s · ${seg.sheikh || 'Unknown'} · ${seg.source_id || 'source:auto'}</div>
+            </div>`
+          ))
+          .join('');
+
+        segmentChainEl.querySelectorAll('[data-remove-segment]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.removeSegment);
+            chainSegments.splice(idx, 1);
+            renderChain();
+          });
         });
       }
 
@@ -354,9 +389,19 @@
 
       document.getElementById('generate-btn').addEventListener('click', async () => {
         try {
-          await loadEstimate();
+          if (!chainSegments.length) {
+            await loadEstimate();
+            if (currentEstimate) {
+              chainSegments = [{
+                day: currentEstimate.day,
+                surah_number: currentEstimate.surah_number,
+                ayah_start: currentEstimate.ayah_start,
+                ayah_end: currentEstimate.ayah_end,
+              }];
+            }
+          }
           const payload = {
-            ...getEstimateInputs(),
+            segments: chainSegments,
             align_subtitles: true,
           };
           const out = await api('/draft/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -365,6 +410,32 @@
         } catch (err) {
           setLog(String(err));
         }
+      });
+
+      document.getElementById('add-segment-btn').addEventListener('click', async () => {
+        try {
+          await loadEstimate();
+          if (!currentEstimate) return;
+          chainSegments.push({
+            day: currentEstimate.day,
+            surah_number: currentEstimate.surah_number,
+            ayah_start: currentEstimate.ayah_start,
+            ayah_end: currentEstimate.ayah_end,
+            clip_start: currentEstimate.estimated_clip_start,
+            duration: currentEstimate.estimated_duration,
+            sheikh: currentEstimate.estimated_sheikh,
+            source_id: currentEstimate.source_id,
+          });
+          renderChain();
+          setLog(`Added segment ${currentEstimate.day}:${currentEstimate.surah_number}:${currentEstimate.ayah_start}-${currentEstimate.ayah_end}`);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      document.getElementById('clear-segments-btn').addEventListener('click', () => {
+        chainSegments = [];
+        renderChain();
       });
 
       saveBtn.addEventListener('click', async () => {
@@ -418,6 +489,7 @@
           setLog(String(err));
           estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`;
         });
+      renderChain();
       setInterval(async () => {
         try {
           if (selectedDraft) {

@@ -10,6 +10,8 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - Draft state machine and metadata persistence
 - Marker sync endpoint for external website repo push
 - Subtitle map update API (JSON payload, no file upload)
+- Chained multi-segment reels across days/surahs with transitions
+- Verified subtitle memory for reused ayah subtitle work
 - Artifact streaming endpoint
 - Built-in browser UI at `/` for full local workflow
 - UI auto-estimates clip start/duration/source from synced markers (no manual marker JSON paste)
@@ -20,10 +22,15 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - `GET /health`
 - `GET /` (local UI)
 - `POST /markers/sync`
+- `GET /markers/available`
+- `GET /markers/day/{day}/index`
 - `POST /draft/generate`
+- `GET /draft/estimate`
 - `POST /draft/update-subtitles`
 - `POST /render/final`
 - `GET /draft/{draft_id}`
+- `GET /drafts`
+- `GET /subtitles/verified`
 - `GET /draft/{draft_id}/artifact/{artifact_name}`
 
 ## Draft layout
@@ -55,6 +62,8 @@ and terminal `failed`.
 - `duration`
 
 If hash exists, server returns the existing draft.
+
+For chained requests, hash is computed from all segment keys in order.
 
 ## Run locally
 

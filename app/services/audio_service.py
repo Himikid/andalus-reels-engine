@@ -55,6 +55,22 @@ class AudioService:
         subprocess.run(cmd, check=True)
         return output_wav
 
+    def extract_full_audio(self, video_path: Path, output_wav: Path) -> Path:
+        ensure_dir(output_wav.parent)
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            str(output_wav),
+        ]
+        subprocess.run(cmd, check=True)
+        return output_wav
+
     @staticmethod
     def _youtube_id(url: str) -> str:
         match = re.search(r"(?:v=|youtu\.be/|/live/)([A-Za-z0-9_-]{8,})", url)

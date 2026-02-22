@@ -46,7 +46,14 @@ class MarkerService:
         payload = read_json(path, default={})
         return payload if isinstance(payload, dict) else {}
 
-    def estimate_draft_inputs(self, day: int, surah_number: int, ayah_start: int, ayah_end: int) -> dict:
+    def estimate_draft_inputs(
+        self,
+        day: int,
+        surah_number: int,
+        ayah_start: int,
+        ayah_end: int,
+        source_id: str | None = None,
+    ) -> dict:
         doc = self.latest_markers_document(day)
         markers = doc.get("markers", []) if isinstance(doc.get("markers"), list) else []
         if not markers:
@@ -72,11 +79,11 @@ class MarkerService:
         in_range.sort(key=lambda item: _num(item.get("time")))
         first = in_range[0]
         last = in_range[-1]
-        source_id = str(first.get("source_id", "")).strip() or None
+        effective_source_id = source_id or str(first.get("source_id", "")).strip() or None
 
         scoped = markers
-        if source_id:
-            scoped = [m for m in markers if str(m.get("source_id", "")).strip() == source_id]
+        if effective_source_id:
+            scoped = [m for m in markers if str(m.get("source_id", "")).strip() == effective_source_id]
             if not scoped:
                 scoped = markers
         scoped = sorted(scoped, key=lambda item: _num(item.get("time")))
@@ -117,6 +124,7 @@ class MarkerService:
             "estimated_sheikh": sheikh,
             "source_url": source_url if isinstance(source_url, str) else None,
             "source_video_path": source_video_path if isinstance(source_video_path, str) else None,
+            "source_id": effective_source_id,
             "marker_count_in_range": len(in_range),
         }
 

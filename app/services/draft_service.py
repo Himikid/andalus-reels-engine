@@ -14,16 +14,33 @@ class DraftService:
         ensure_dir(settings.drafts_dir / "index")
 
     def compute_request_hash(self, req: DraftGenerateRequest) -> str:
-        canonical = "|".join(
-            [
-                str(req.day),
-                str(req.surah_number),
-                str(req.ayah_start),
-                str(req.ayah_end),
-                str(round(req.clip_start, 3)),
-                str(round(req.duration, 3)),
-            ]
-        )
+        if req.segments:
+            parts: list[str] = []
+            for seg in req.segments:
+                parts.append(
+                    ":".join(
+                        [
+                            str(seg.day),
+                            str(seg.surah_number),
+                            str(seg.ayah_start),
+                            str(seg.ayah_end),
+                            str(round(float(seg.clip_start or 0.0), 3)),
+                            str(round(float(seg.duration or 0.0), 3)),
+                        ]
+                    )
+                )
+            canonical = "|".join(parts)
+        else:
+            canonical = "|".join(
+                [
+                    str(req.day),
+                    str(req.surah_number),
+                    str(req.ayah_start),
+                    str(req.ayah_end),
+                    str(round(float(req.clip_start or 0.0), 3)),
+                    str(round(float(req.duration or 0.0), 3)),
+                ]
+            )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def create_or_get_by_hash(self, req: DraftGenerateRequest) -> tuple[DraftMetadata, bool]:
