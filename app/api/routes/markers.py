@@ -15,3 +15,8 @@ def sync_markers(payload: MarkerSyncRequest) -> MarkerSyncResponse:
 @router.get("/markers/available")
 def available_markers() -> list[dict]:
     return service.list_available_days()
+
+
+@router.get("/markers/day/{day}/index")
+def day_marker_index(day: int) -> dict:
+    return service.day_index(day)

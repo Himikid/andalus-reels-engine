@@ -155,3 +155,44 @@ class MarkerService:
 
         rows.sort(key=lambda row: row["day"])
         return rows
+
+    def day_index(self, day: int) -> dict:
+        doc = self.latest_markers_document(day)
+        markers = doc.get("markers", []) if isinstance(doc.get("markers"), list) else []
+        if not markers:
+            return {"day": day, "surahs": []}
+
+        surah_map: dict[int, dict] = {}
+        for marker in markers:
+            try:
+                surah_number = int(marker.get("surah_number", 0) or 0)
+                ayah = int(marker.get("ayah", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if surah_number <= 0 or ayah <= 0:
+                continue
+            item = surah_map.get(
+                surah_number,
+                {
+                    "surah_number": surah_number,
+                    "surah_name": str(marker.get("surah", "")).strip() or f"Surah {surah_number}",
+                    "ayahs": set(),
+                },
+            )
+            item["ayahs"].add(ayah)
+            surah_map[surah_number] = item
+
+        surahs: list[dict] = []
+        for surah_number, item in sorted(surah_map.items(), key=lambda kv: kv[0]):
+            ayahs_sorted = sorted(item["ayahs"])
+            surahs.append(
+                {
+                    "surah_number": surah_number,
+                    "surah_name": item["surah_name"],
+                    "ayahs": ayahs_sorted,
+                    "ayah_min": ayahs_sorted[0],
+                    "ayah_max": ayahs_sorted[-1],
+                }
+            )
+
+        return {"day": day, "surahs": surahs}

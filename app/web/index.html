@@ -45,11 +45,11 @@
           <div id="available-days" class="muted">Loading...</div>
 
           <h2 style="margin-top:20px;">Generate Draft</h2>
-          <div class="field"><label>Day</label><input id="gen-day" type="number" min="1" max="30" value="1" /></div>
+          <div class="field"><label>Day</label><select id="gen-day"></select></div>
           <div class="row">
-            <div class="field" style="flex:1;"><label>Surah</label><input id="gen-surah" type="number" min="1" max="114" value="2" /></div>
-            <div class="field" style="flex:1;"><label>Ayah Start</label><input id="gen-ayah-start" type="number" min="1" value="1" /></div>
-            <div class="field" style="flex:1;"><label>Ayah End</label><input id="gen-ayah-end" type="number" min="1" value="5" /></div>
+            <div class="field" style="flex:1;"><label>Surah</label><select id="gen-surah"></select></div>
+            <div class="field" style="flex:1;"><label>Ayah Start</label><select id="gen-ayah-start"></select></div>
+            <div class="field" style="flex:1;"><label>Ayah End</label><select id="gen-ayah-end"></select></div>
           </div>
           <div class="card" style="padding:10px; margin:8px 0; background:#f7fbf8;">
             <p class="muted" style="margin:0 0 6px;">Estimated from synced markers</p>
@@ -105,12 +105,17 @@
       const finalVideo = document.getElementById('final-video');
       const availableDaysEl = document.getElementById('available-days');
       const estimateBoxEl = document.getElementById('estimate-box');
+      const genDayEl = document.getElementById('gen-day');
+      const genSurahEl = document.getElementById('gen-surah');
+      const genAyahStartEl = document.getElementById('gen-ayah-start');
+      const genAyahEndEl = document.getElementById('gen-ayah-end');
 
       let drafts = [];
       let selectedDraft = null;
       let subtitleRows = [];
       let availableDays = [];
       let currentEstimate = null;
+      let dayIndex = { day: null, surahs: [] };
 
       const setLog = (text) => { logEl.textContent = text; };
       const pretty = (obj) => JSON.stringify(obj, null, 2);
@@ -207,9 +212,84 @@
           .join('');
       }
 
+      function setSelectOptions(selectEl, values, labelFn) {
+        selectEl.innerHTML = '';
+        values.forEach((value) => {
+          const option = document.createElement('option');
+          option.value = String(value);
+          option.textContent = labelFn ? labelFn(value) : String(value);
+          selectEl.appendChild(option);
+        });
+      }
+
       async function loadAvailableDays() {
         availableDays = await api('/markers/available');
         renderAvailableDays();
+        const dayOptions = availableDays.map((row) => row.day);
+        if (dayOptions.length) {
+          setSelectOptions(genDayEl, dayOptions);
+          if (!dayOptions.includes(Number(genDayEl.value))) {
+            genDayEl.value = String(dayOptions[0]);
+          }
+          await loadDayIndex();
+        } else {
+          genDayEl.innerHTML = '';
+          genSurahEl.innerHTML = '';
+          genAyahStartEl.innerHTML = '';
+          genAyahEndEl.innerHTML = '';
+        }
+      }
+
+      async function loadDayIndex() {
+        const day = Number(genDayEl.value);
+        dayIndex = await api(`/markers/day/${day}/index`);
+        const surahs = Array.isArray(dayIndex.surahs) ? dayIndex.surahs : [];
+        if (!surahs.length) {
+          genSurahEl.innerHTML = '';
+          genAyahStartEl.innerHTML = '';
+          genAyahEndEl.innerHTML = '';
+          return;
+        }
+
+        const surahValues = surahs.map((s) => s.surah_number);
+        setSelectOptions(genSurahEl, surahValues, (num) => {
+          const row = surahs.find((s) => s.surah_number === Number(num));
+          return `${row.surah_number} - ${row.surah_name}`;
+        });
+        if (!surahValues.includes(Number(genSurahEl.value))) {
+          genSurahEl.value = String(surahValues[0]);
+        }
+        populateAyahSelectors();
+      }
+
+      function populateAyahSelectors() {
+        const surahNumber = Number(genSurahEl.value);
+        const surah = (dayIndex.surahs || []).find((s) => s.surah_number === surahNumber);
+        const ayahs = Array.isArray(surah?.ayahs) ? surah.ayahs : [];
+        if (!ayahs.length) {
+          genAyahStartEl.innerHTML = '';
+          genAyahEndEl.innerHTML = '';
+          return;
+        }
+
+        setSelectOptions(genAyahStartEl, ayahs);
+        setSelectOptions(genAyahEndEl, ayahs);
+
+        if (!ayahs.includes(Number(genAyahStartEl.value))) {
+          genAyahStartEl.value = String(ayahs[0]);
+        }
+        if (!ayahs.includes(Number(genAyahEndEl.value))) {
+          genAyahEndEl.value = String(ayahs[ayahs.length - 1]);
+        }
+        clampAyahRange();
+      }
+
+      function clampAyahRange() {
+        const start = Number(genAyahStartEl.value);
+        const end = Number(genAyahEndEl.value);
+        if (end < start) {
+          genAyahEndEl.value = String(start);
+        }
       }
 
       function getEstimateInputs() {
@@ -315,6 +395,15 @@
         const el = document.getElementById(id);
         el.addEventListener('change', async () => {
           try {
+            if (id === 'gen-day') {
+              await loadDayIndex();
+            }
+            if (id === 'gen-surah') {
+              populateAyahSelectors();
+            }
+            if (id === 'gen-ayah-start' || id === 'gen-ayah-end') {
+              clampAyahRange();
+            }
             await loadEstimate();
           } catch (err) {
             estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`;
@@ -323,8 +412,12 @@
       });
 
       loadDrafts().catch((err) => setLog(String(err)));
-      loadAvailableDays().catch((err) => setLog(String(err)));
-      loadEstimate().catch((err) => { estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`; });
+      loadAvailableDays()
+        .then(() => loadEstimate())
+        .catch((err) => {
+          setLog(String(err));
+          estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`;
+        });
       setInterval(async () => {
         try {
           if (selectedDraft) {
@@ -332,7 +425,11 @@
           } else {
             await loadDrafts();
           }
+          const currentDay = Number(genDayEl.value || 0);
           await loadAvailableDays();
+          if (Number(genDayEl.value || 0) !== currentDay) {
+            await loadDayIndex();
+          }
         } catch (_) {}
       }, 8000);
     </script>
