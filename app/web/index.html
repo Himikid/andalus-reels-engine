@@ -36,17 +36,15 @@
   <body>
     <div class="wrap">
       <h1>Andalus Reels Engine</h1>
-      <p class="muted">Local dashboard for marker sync, draft generation, subtitle row editing, and final rendering.</p>
+      <p class="muted">Local dashboard for draft generation, subtitle row editing, and final rendering from already synced website markers.</p>
 
       <div class="grid">
         <div class="card">
-          <h2>1) Sync Markers</h2>
-          <div class="field"><label>Day</label><input id="sync-day" type="number" min="1" max="30" value="1" /></div>
-          <div class="field"><label>Source URL (optional)</label><input id="sync-source-url" placeholder="https://youtube.com/watch?v=..." /></div>
-          <div class="field"><label>Markers JSON Array</label><textarea id="sync-markers" placeholder='[{"time":1530,"surah":"Aal-i-Imran","ayah":92,"surah_number":3}]'></textarea></div>
-          <button id="sync-btn">Sync Markers</button>
+          <h2>Synced Days (from website)</h2>
+          <p class="muted">Markers are synced from the website repo script. Manual JSON paste is disabled.</p>
+          <div id="available-days" class="muted">Loading...</div>
 
-          <h2 style="margin-top:20px;">2) Generate Draft</h2>
+          <h2 style="margin-top:20px;">Generate Draft</h2>
           <div class="field"><label>Day</label><input id="gen-day" type="number" min="1" max="30" value="1" /></div>
           <div class="row">
             <div class="field" style="flex:1;"><label>Surah</label><input id="gen-surah" type="number" min="1" max="114" value="2" /></div>
@@ -109,10 +107,12 @@
       const playersEl = document.getElementById('players');
       const draftVideo = document.getElementById('draft-video');
       const finalVideo = document.getElementById('final-video');
+      const availableDaysEl = document.getElementById('available-days');
 
       let drafts = [];
       let selectedDraft = null;
       let subtitleRows = [];
+      let availableDays = [];
 
       const setLog = (text) => { logEl.textContent = text; };
       const pretty = (obj) => JSON.stringify(obj, null, 2);
@@ -190,6 +190,30 @@
         renderDrafts();
       }
 
+      function renderAvailableDays() {
+        if (!availableDays.length) {
+          availableDaysEl.innerHTML = '<p class="muted">No synced marker days found yet.</p>';
+          return;
+        }
+        availableDaysEl.innerHTML = availableDays
+          .map((row) => {
+            const summary = row.has_summary ? ` · ${row.summary_title || 'Summary synced'}` : ' · No summary yet';
+            return `<div class="draft-row" style="margin-bottom:6px;">
+              <div class="row" style="justify-content:space-between;">
+                <strong>Day ${row.day}</strong>
+                <span class="pill">${row.marker_count} markers</span>
+              </div>
+              <div class="muted">${summary}</div>
+            </div>`;
+          })
+          .join('');
+      }
+
+      async function loadAvailableDays() {
+        availableDays = await api('/markers/available');
+        renderAvailableDays();
+      }
+
       async function openDraft(draftId) {
         selectedDraft = await api(`/draft/${draftId}`);
         selectedMetaEl.textContent = `Draft ${selectedDraft.draft_id} · ${selectedDraft.status}${selectedDraft.running ? ' · Running' : ''}`;
@@ -214,22 +238,6 @@
         try {
           await loadDrafts();
           setLog('Draft list refreshed.');
-        } catch (err) {
-          setLog(String(err));
-        }
-      });
-
-      document.getElementById('sync-btn').addEventListener('click', async () => {
-        try {
-          const markers = JSON.parse(document.getElementById('sync-markers').value || '[]');
-          const payload = {
-            day: Number(document.getElementById('sync-day').value),
-            source_url: document.getElementById('sync-source-url').value || null,
-            full_refresh: true,
-            markers,
-          };
-          const out = await api('/markers/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          setLog(pretty(out));
         } catch (err) {
           setLog(String(err));
         }
@@ -282,6 +290,7 @@
       });
 
       loadDrafts().catch((err) => setLog(String(err)));
+      loadAvailableDays().catch((err) => setLog(String(err)));
       setInterval(async () => {
         try {
           if (selectedDraft) {
@@ -289,6 +298,7 @@
           } else {
             await loadDrafts();
           }
+          await loadAvailableDays();
         } catch (_) {}
       }, 8000);
     </script>

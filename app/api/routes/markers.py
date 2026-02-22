@@ -10,3 +10,8 @@ service = MarkerService()
 @router.post("/markers/sync", response_model=MarkerSyncResponse)
 def sync_markers(payload: MarkerSyncRequest) -> MarkerSyncResponse:
     return service.sync(payload)
+
+
+@router.get("/markers/available")
+def available_markers() -> list[dict]:
+    return service.list_available_days()
