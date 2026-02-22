@@ -4,8 +4,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from app.core.worker import worker
-from app.models.schemas import DraftGenerateRequest, DraftResponse, DraftStatus, RenderFinalRequest, SubtitleUpdateRequest
+from app.models.schemas import (
+    DraftEstimateResponse,
+    DraftGenerateRequest,
+    DraftResponse,
+    DraftStatus,
+    RenderFinalRequest,
+    SubtitleUpdateRequest,
+)
 from app.services.draft_service import DraftService
+from app.services.marker_service import MarkerService
 from app.services.reel_pipeline import ReelPipeline
 from app.services.subtitle_service import SubtitleService
 
@@ -13,11 +21,51 @@ router = APIRouter(tags=["draft"])
 drafts = DraftService()
 pipeline = ReelPipeline()
 subtitles = SubtitleService()
+markers = MarkerService()
+
+
+@router.get("/draft/estimate", response_model=DraftEstimateResponse)
+def draft_estimate(day: int, surah_number: int, ayah_start: int, ayah_end: int) -> DraftEstimateResponse:
+    try:
+        estimate = markers.estimate_draft_inputs(day=day, surah_number=surah_number, ayah_start=ayah_start, ayah_end=ayah_end)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return DraftEstimateResponse(
+        day=day,
+        surah_number=surah_number,
+        ayah_start=ayah_start,
+        ayah_end=ayah_end,
+        **estimate,
+    )
 
 
 @router.post("/draft/generate", response_model=DraftResponse)
 def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResponse:
-    metadata, created = drafts.create_or_get_by_hash(payload)
+    try:
+        estimate = markers.estimate_draft_inputs(
+            day=payload.day,
+            surah_number=payload.surah_number,
+            ayah_start=payload.ayah_start,
+            ayah_end=payload.ayah_end,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resolved = DraftGenerateRequest(
+        day=payload.day,
+        surah_number=payload.surah_number,
+        ayah_start=payload.ayah_start,
+        ayah_end=payload.ayah_end,
+        clip_start=payload.clip_start if payload.clip_start is not None else estimate["estimated_clip_start"],
+        duration=payload.duration if payload.duration is not None else estimate["estimated_duration"],
+        sheikh=payload.sheikh or estimate["estimated_sheikh"],
+        youtube_url=payload.youtube_url or estimate["source_url"],
+        source_video_path=payload.source_video_path or estimate["source_video_path"],
+        style=payload.style,
+        variants=payload.variants,
+        align_subtitles=payload.align_subtitles,
+    )
+
+    metadata, created = drafts.create_or_get_by_hash(resolved)
     base_url = str(request.base_url).rstrip("/")
 
     if created:

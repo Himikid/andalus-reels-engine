@@ -66,14 +66,27 @@ class DraftGenerateRequest(BaseModel):
     surah_number: int = Field(ge=1, le=114)
     ayah_start: int = Field(ge=1)
     ayah_end: int = Field(ge=1)
-    clip_start: float = Field(ge=0)
-    duration: float = Field(gt=0)
+    clip_start: float | None = Field(default=None, ge=0)
+    duration: float | None = Field(default=None, gt=0)
     sheikh: str | None = None
     youtube_url: HttpUrl | None = None
     source_video_path: str | None = None
     style: str = "fit"
     variants: str = "clean"
     align_subtitles: bool = True
+
+
+class DraftEstimateResponse(BaseModel):
+    day: int
+    surah_number: int
+    ayah_start: int
+    ayah_end: int
+    estimated_clip_start: float
+    estimated_duration: float
+    estimated_sheikh: str | None = None
+    source_url: str | None = None
+    source_video_path: str | None = None
+    marker_count_in_range: int
 
 
 class SubtitleChunk(BaseModel):

@@ -51,14 +51,10 @@
             <div class="field" style="flex:1;"><label>Ayah Start</label><input id="gen-ayah-start" type="number" min="1" value="1" /></div>
             <div class="field" style="flex:1;"><label>Ayah End</label><input id="gen-ayah-end" type="number" min="1" value="5" /></div>
           </div>
-          <div class="row">
-            <div class="field" style="flex:1;"><label>Clip Start (sec)</label><input id="gen-clip-start" type="number" min="0" value="25" /></div>
-            <div class="field" style="flex:1;"><label>Duration (sec)</label><input id="gen-duration" type="number" min="1" value="40" /></div>
+          <div class="card" style="padding:10px; margin:8px 0; background:#f7fbf8;">
+            <p class="muted" style="margin:0 0 6px;">Estimated from synced markers</p>
+            <div id="estimate-box" class="muted">Select day/surah/ayah to load estimate.</div>
           </div>
-          <div class="field"><label>Sheikh</label><input id="gen-sheikh" value="Sheikh Hasan" /></div>
-          <div class="field"><label>YouTube URL (optional)</label><input id="gen-youtube-url" placeholder="https://youtube.com/watch?v=..." /></div>
-          <div class="field"><label>Local Source Video Path (optional)</label><input id="gen-source-path" placeholder="/abs/path/video.mp4" /></div>
-          <div class="row"><input id="gen-align-subtitles" type="checkbox" checked /><label for="gen-align-subtitles">Align subtitles</label></div>
           <button id="generate-btn">Generate Draft</button>
 
           <h2 style="margin-top:20px;">Server Log</h2>
@@ -108,11 +104,13 @@
       const draftVideo = document.getElementById('draft-video');
       const finalVideo = document.getElementById('final-video');
       const availableDaysEl = document.getElementById('available-days');
+      const estimateBoxEl = document.getElementById('estimate-box');
 
       let drafts = [];
       let selectedDraft = null;
       let subtitleRows = [];
       let availableDays = [];
+      let currentEstimate = null;
 
       const setLog = (text) => { logEl.textContent = text; };
       const pretty = (obj) => JSON.stringify(obj, null, 2);
@@ -214,6 +212,37 @@
         renderAvailableDays();
       }
 
+      function getEstimateInputs() {
+        return {
+          day: Number(document.getElementById('gen-day').value),
+          surah_number: Number(document.getElementById('gen-surah').value),
+          ayah_start: Number(document.getElementById('gen-ayah-start').value),
+          ayah_end: Number(document.getElementById('gen-ayah-end').value),
+        };
+      }
+
+      async function loadEstimate() {
+        const input = getEstimateInputs();
+        if (!Number.isFinite(input.day) || !Number.isFinite(input.surah_number) || !Number.isFinite(input.ayah_start) || !Number.isFinite(input.ayah_end)) {
+          return;
+        }
+        const query = new URLSearchParams({
+          day: String(input.day),
+          surah_number: String(input.surah_number),
+          ayah_start: String(input.ayah_start),
+          ayah_end: String(input.ayah_end),
+        }).toString();
+        currentEstimate = await api(`/draft/estimate?${query}`);
+        const source = currentEstimate.source_url || currentEstimate.source_video_path || 'not provided';
+        estimateBoxEl.innerHTML = `
+          Clip Start: <strong>${currentEstimate.estimated_clip_start}s</strong><br/>
+          Duration: <strong>${currentEstimate.estimated_duration}s</strong><br/>
+          Sheikh: <strong>${currentEstimate.estimated_sheikh || 'Unknown'}</strong><br/>
+          Source: <strong>${source}</strong><br/>
+          Markers in range: <strong>${currentEstimate.marker_count_in_range}</strong>
+        `;
+      }
+
       async function openDraft(draftId) {
         selectedDraft = await api(`/draft/${draftId}`);
         selectedMetaEl.textContent = `Draft ${selectedDraft.draft_id} · ${selectedDraft.status}${selectedDraft.running ? ' · Running' : ''}`;
@@ -245,17 +274,10 @@
 
       document.getElementById('generate-btn').addEventListener('click', async () => {
         try {
+          await loadEstimate();
           const payload = {
-            day: Number(document.getElementById('gen-day').value),
-            surah_number: Number(document.getElementById('gen-surah').value),
-            ayah_start: Number(document.getElementById('gen-ayah-start').value),
-            ayah_end: Number(document.getElementById('gen-ayah-end').value),
-            clip_start: Number(document.getElementById('gen-clip-start').value),
-            duration: Number(document.getElementById('gen-duration').value),
-            sheikh: document.getElementById('gen-sheikh').value || null,
-            youtube_url: document.getElementById('gen-youtube-url').value || null,
-            source_video_path: document.getElementById('gen-source-path').value || null,
-            align_subtitles: document.getElementById('gen-align-subtitles').checked,
+            ...getEstimateInputs(),
+            align_subtitles: true,
           };
           const out = await api('/draft/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           setLog(pretty(out));
@@ -289,8 +311,20 @@
         }
       });
 
+      ['gen-day', 'gen-surah', 'gen-ayah-start', 'gen-ayah-end'].forEach((id) => {
+        const el = document.getElementById(id);
+        el.addEventListener('change', async () => {
+          try {
+            await loadEstimate();
+          } catch (err) {
+            estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`;
+          }
+        });
+      });
+
       loadDrafts().catch((err) => setLog(String(err)));
       loadAvailableDays().catch((err) => setLog(String(err)));
+      loadEstimate().catch((err) => { estimateBoxEl.textContent = `Estimate unavailable: ${String(err)}`; });
       setInterval(async () => {
         try {
           if (selectedDraft) {

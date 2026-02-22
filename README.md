@@ -12,6 +12,7 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - Subtitle map update API (JSON payload, no file upload)
 - Artifact streaming endpoint
 - Built-in browser UI at `/` for full local workflow
+- UI auto-estimates clip start/duration/source from synced markers (no manual marker JSON paste)
 - Docker and docker-compose
 
 ## API
