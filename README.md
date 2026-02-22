@@ -15,6 +15,7 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - Artifact streaming endpoint
 - Built-in browser UI at `/` for full local workflow
 - UI auto-estimates clip start/duration/source from synced markers (no manual marker JSON paste)
+- Source resolution is server-owned: sync provides URL references, and engine uses its own local cache directory.
 - Docker and docker-compose
 
 ## API

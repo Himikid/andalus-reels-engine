@@ -34,7 +34,6 @@ class ReelPipeline:
                 "duration": request_payload["duration"],
                 "sheikh": request_payload.get("sheikh"),
                 "youtube_url": request_payload.get("youtube_url"),
-                "source_video_path": request_payload.get("source_video_path"),
                 "source_id": request_payload.get("source_id"),
                 "marker_count_in_range": request_payload.get("marker_count_in_range", 0),
             }
@@ -59,7 +58,7 @@ class ReelPipeline:
                 seg_id = seg.get("segment_id") or f"seg-{idx}"
                 self.drafts.update_status(draft_id, DraftStatus.generating, f"processing_{seg_id}")
 
-                source_video = self.audio.resolve_video_source(seg.get("youtube_url"), seg.get("source_video_path"))
+                source_video = self.audio.resolve_video_source(seg.get("youtube_url"))
 
                 preview_file = draft_dir / f"preview-{seg_id}.mp4"
                 self.render.generate_preview_segment(
@@ -104,7 +103,7 @@ class ReelPipeline:
             final_segments: list[Path] = []
             for idx, seg in enumerate(segments, start=1):
                 seg_id = seg.get("segment_id") or f"seg-{idx}"
-                source_video = self.audio.resolve_video_source(seg.get("youtube_url"), seg.get("source_video_path"))
+                source_video = self.audio.resolve_video_source(seg.get("youtube_url"))
                 final_file = draft_dir / f"final-{seg_id}.mp4"
                 self.render.generate_final_segment(
                     source_video,

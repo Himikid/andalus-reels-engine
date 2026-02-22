@@ -24,7 +24,6 @@ class MarkerItem(BaseModel):
 class MarkerSyncRequest(BaseModel):
     day: int = Field(ge=1, le=30)
     source_url: str | None = None
-    source_video_path: str | None = None
     full_refresh: bool = True
     markers: list[MarkerItem]
 
@@ -70,7 +69,6 @@ class DraftGenerateRequest(BaseModel):
     duration: float | None = Field(default=None, gt=0)
     sheikh: str | None = None
     youtube_url: HttpUrl | None = None
-    source_video_path: str | None = None
     style: str = "fit"
     variants: str = "clean"
     align_subtitles: bool = True
@@ -96,7 +94,6 @@ class DraftSegmentInput(BaseModel):
     duration: float | None = Field(default=None, gt=0)
     sheikh: str | None = None
     youtube_url: HttpUrl | None = None
-    source_video_path: str | None = None
     source_id: str | None = None
     marker_count_in_range: int | None = None
 
@@ -111,7 +108,6 @@ class ResolvedDraftSegment(BaseModel):
     duration: float
     sheikh: str | None = None
     youtube_url: str | None = None
-    source_video_path: str | None = None
     source_id: str | None = None
     marker_count_in_range: int
 
@@ -125,7 +121,6 @@ class DraftEstimateResponse(BaseModel):
     estimated_duration: float
     estimated_sheikh: str | None = None
     source_url: str | None = None
-    source_video_path: str | None = None
     source_id: str | None = None
     marker_count_in_range: int
 

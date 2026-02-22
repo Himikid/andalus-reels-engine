@@ -348,7 +348,7 @@
           ayah_end: String(input.ayah_end),
         }).toString();
         currentEstimate = await api(`/draft/estimate?${query}`);
-        const source = currentEstimate.source_url || currentEstimate.source_video_path || 'not provided';
+        const source = currentEstimate.source_url || 'not provided';
         estimateBoxEl.innerHTML = `
           Clip Start: <strong>${currentEstimate.estimated_clip_start}s</strong><br/>
           Duration: <strong>${currentEstimate.estimated_duration}s</strong><br/>

@@ -20,7 +20,6 @@ class MarkerService:
         document = {
             "day": payload.day,
             "source_url": str(payload.source_url) if payload.source_url else None,
-            "source_video_path": payload.source_video_path,
             "full_refresh": payload.full_refresh,
             "synced_at": datetime.now(timezone.utc).isoformat(),
             "markers": [item.model_dump(mode="json") for item in payload.markers],
@@ -113,9 +112,7 @@ class MarkerService:
             sheikh = f"Sheikh {sheikh}"
 
         source_url = doc.get("source_url")
-        source_video_path = doc.get("source_video_path")
         if isinstance(source_url, str) and source_url and not source_url.lower().startswith(("http://", "https://")):
-            source_video_path = source_video_path or source_url
             source_url = None
 
         return {
@@ -123,7 +120,6 @@ class MarkerService:
             "estimated_duration": round(duration, 2),
             "estimated_sheikh": sheikh,
             "source_url": source_url if isinstance(source_url, str) else None,
-            "source_video_path": source_video_path if isinstance(source_video_path, str) else None,
             "source_id": effective_source_id,
             "marker_count_in_range": len(in_range),
         }

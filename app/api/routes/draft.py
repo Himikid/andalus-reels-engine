@@ -73,7 +73,6 @@ def _resolve_segment(segment: DraftSegmentInput) -> dict:
         "duration": segment.duration if segment.duration is not None else estimate["estimated_duration"],
         "sheikh": segment.sheikh or estimate["estimated_sheikh"],
         "youtube_url": str(segment.youtube_url) if segment.youtube_url else estimate["source_url"],
-        "source_video_path": segment.source_video_path or estimate["source_video_path"],
         "source_id": segment.source_id or estimate.get("source_id"),
         "marker_count_in_range": estimate["marker_count_in_range"],
     }
@@ -92,7 +91,6 @@ def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResp
                 duration=payload.duration,
                 sheikh=payload.sheikh,
                 youtube_url=payload.youtube_url,
-                source_video_path=payload.source_video_path,
             )
         ]
         resolved_segments = [_resolve_segment(segment) for segment in raw_segments]
@@ -107,7 +105,6 @@ def draft_generate(payload: DraftGenerateRequest, request: Request) -> DraftResp
         duration=resolved_segments[0]["duration"] if resolved_segments else payload.duration,
         sheikh=resolved_segments[0]["sheikh"] if resolved_segments else payload.sheikh,
         youtube_url=resolved_segments[0]["youtube_url"] if resolved_segments else payload.youtube_url,
-        source_video_path=resolved_segments[0]["source_video_path"] if resolved_segments else payload.source_video_path,
         style=payload.style,
         variants=payload.variants,
         align_subtitles=payload.align_subtitles,

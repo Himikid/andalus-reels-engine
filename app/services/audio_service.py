@@ -10,14 +10,9 @@ class AudioService:
     def __init__(self) -> None:
         ensure_dir(settings.cache_videos_dir)
 
-    def resolve_video_source(self, youtube_url: str | None, source_video_path: str | None) -> Path:
-        if source_video_path:
-            path = Path(source_video_path).expanduser().resolve()
-            if path.exists():
-                return path
-
+    def resolve_video_source(self, youtube_url: str | None) -> Path:
         if not youtube_url:
-            raise RuntimeError("No source video path or youtube_url provided.")
+            raise RuntimeError("No synced source URL available for this segment.")
 
         video_id = self._youtube_id(youtube_url)
         target = settings.cache_videos_dir / f"{video_id}.mp4"
