@@ -17,11 +17,13 @@ class MarkerItem(BaseModel):
     reciter: str | None = None
     arabic_text: str | None = None
     english_text: str | None = None
+    source_id: str | None = None
+    source_url: str | None = None
 
 
 class MarkerSyncRequest(BaseModel):
     day: int = Field(ge=1, le=30)
-    source_url: HttpUrl | None = None
+    source_url: str | None = None
     source_video_path: str | None = None
     full_refresh: bool = True
     markers: list[MarkerItem]
@@ -32,6 +34,22 @@ class MarkerSyncResponse(BaseModel):
     marker_count: int
     latest_path: str
     snapshot_path: str
+
+
+class DaySummaryItem(BaseModel):
+    day: int = Field(ge=1, le=30)
+    title: str
+    summary: str
+    themes: list[str]
+
+
+class SummarySyncRequest(BaseModel):
+    summaries: list[DaySummaryItem]
+
+
+class SummarySyncResponse(BaseModel):
+    count: int
+    paths: list[str]
 
 
 class DraftStatus(str, Enum):
