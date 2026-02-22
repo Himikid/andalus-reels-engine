@@ -77,6 +77,16 @@ def get_draft(draft_id: str, request: Request) -> DraftResponse:
     return drafts.response_for(metadata, base_url=str(request.base_url).rstrip("/"), running=running)
 
 
+@router.get("/drafts", response_model=list[DraftResponse])
+def list_drafts(request: Request) -> list[DraftResponse]:
+    base_url = str(request.base_url).rstrip("/")
+    rows: list[DraftResponse] = []
+    for metadata in drafts.list_metadata():
+        running = worker.is_running(f"generate:{metadata.draft_id}") or worker.is_running(f"final:{metadata.draft_id}")
+        rows.append(drafts.response_for(metadata, base_url=base_url, running=running))
+    return rows
+
+
 @router.get("/draft/{draft_id}/artifact/{artifact_name}")
 def stream_artifact(draft_id: str, artifact_name: str) -> FileResponse:
     metadata = drafts.load_metadata(draft_id)

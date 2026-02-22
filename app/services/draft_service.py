@@ -99,3 +99,14 @@ class DraftService:
             artifact_urls=urls,
             running=running,
         )
+
+    def list_metadata(self) -> list[DraftMetadata]:
+        items: list[DraftMetadata] = []
+        for entry in settings.drafts_dir.iterdir():
+            if not entry.is_dir() or entry.name == "index":
+                continue
+            metadata = self.load_metadata(entry.name)
+            if metadata:
+                items.append(metadata)
+        items.sort(key=lambda item: item.updated_at, reverse=True)
+        return items

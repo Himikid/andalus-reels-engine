@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Andalus Reels Engine</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #f5f7f6; color: #16221b; }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      h1 { margin: 0 0 16px; font-size: 28px; }
+      .grid { display: grid; grid-template-columns: 360px 1fr; gap: 16px; }
+      .card { background: #fff; border: 1px solid #d7e1da; border-radius: 12px; padding: 14px; }
+      .card h2 { font-size: 16px; margin: 0 0 10px; }
+      .field { display: grid; gap: 6px; margin-bottom: 10px; }
+      input, textarea, button { font: inherit; }
+      input, textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c7d3cb; border-radius: 8px; }
+      textarea { min-height: 110px; }
+      button { border: 0; border-radius: 8px; background: #1d6a4d; color: #fff; padding: 8px 12px; cursor: pointer; }
+      button.secondary { background: #3b4c42; }
+      button.ghost { background: #e7efea; color: #193024; }
+      .muted { color: #55685d; font-size: 13px; }
+      .draft-row { border: 1px solid #d7e1da; border-radius: 10px; padding: 10px; margin-bottom: 8px; background: #fdfefe; }
+      .draft-row.active { border-color: #1d6a4d; background: #eef7f1; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .pill { font-size: 12px; border: 1px solid #cad6cf; border-radius: 999px; padding: 2px 8px; }
+      .subtitle-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .subtitle-table th, .subtitle-table td { border-bottom: 1px solid #e1e8e4; padding: 6px; text-align: left; }
+      .subtitle-table input { padding: 6px; }
+      .subtitle-table .text-cell input { min-width: 360px; }
+      pre { background: #0f1713; color: #d8f0df; padding: 10px; border-radius: 10px; overflow: auto; max-height: 180px; }
+      video, audio { width: 100%; margin-top: 8px; border-radius: 10px; background: #000; }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } .subtitle-table .text-cell input { min-width: 220px; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Andalus Reels Engine</h1>
+      <p class="muted">Local dashboard for marker sync, draft generation, subtitle row editing, and final rendering.</p>
+
+      <div class="grid">
+        <div class="card">
+          <h2>1) Sync Markers</h2>
+          <div class="field"><label>Day</label><input id="sync-day" type="number" min="1" max="30" value="1" /></div>
+          <div class="field"><label>Source URL (optional)</label><input id="sync-source-url" placeholder="https://youtube.com/watch?v=..." /></div>
+          <div class="field"><label>Markers JSON Array</label><textarea id="sync-markers" placeholder='[{"time":1530,"surah":"Aal-i-Imran","ayah":92,"surah_number":3}]'></textarea></div>
+          <button id="sync-btn">Sync Markers</button>
+
+          <h2 style="margin-top:20px;">2) Generate Draft</h2>
+          <div class="field"><label>Day</label><input id="gen-day" type="number" min="1" max="30" value="1" /></div>
+          <div class="row">
+            <div class="field" style="flex:1;"><label>Surah</label><input id="gen-surah" type="number" min="1" max="114" value="2" /></div>
+            <div class="field" style="flex:1;"><label>Ayah Start</label><input id="gen-ayah-start" type="number" min="1" value="1" /></div>
+            <div class="field" style="flex:1;"><label>Ayah End</label><input id="gen-ayah-end" type="number" min="1" value="5" /></div>
+          </div>
+          <div class="row">
+            <div class="field" style="flex:1;"><label>Clip Start (sec)</label><input id="gen-clip-start" type="number" min="0" value="25" /></div>
+            <div class="field" style="flex:1;"><label>Duration (sec)</label><input id="gen-duration" type="number" min="1" value="40" /></div>
+          </div>
+          <div class="field"><label>Sheikh</label><input id="gen-sheikh" value="Sheikh Hasan" /></div>
+          <div class="field"><label>YouTube URL (optional)</label><input id="gen-youtube-url" placeholder="https://youtube.com/watch?v=..." /></div>
+          <div class="field"><label>Local Source Video Path (optional)</label><input id="gen-source-path" placeholder="/abs/path/video.mp4" /></div>
+          <div class="row"><input id="gen-align-subtitles" type="checkbox" checked /><label for="gen-align-subtitles">Align subtitles</label></div>
+          <button id="generate-btn">Generate Draft</button>
+
+          <h2 style="margin-top:20px;">Server Log</h2>
+          <pre id="log">Ready.</pre>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+            <h2 style="margin:0;">Drafts</h2>
+            <button id="refresh-btn" class="ghost">Refresh</button>
+          </div>
+          <div id="drafts-list"></div>
+
+          <hr style="border:none;border-top:1px solid #e1e8e4; margin:14px 0;" />
+          <h2>Selected Draft</h2>
+          <div id="selected-meta" class="muted">No draft selected.</div>
+          <div class="row" style="margin-top:8px;">
+            <button id="render-final-btn" class="secondary" disabled>Render Final</button>
+            <button id="save-subtitles-btn" disabled>Save Subtitle Edits</button>
+          </div>
+
+          <div id="players" style="display:none; margin-top:10px;">
+            <h3 style="font-size:14px;">Draft Preview</h3>
+            <video id="draft-video" controls></video>
+            <h3 style="font-size:14px; margin-top:12px;">Final Render</h3>
+            <video id="final-video" controls></video>
+          </div>
+
+          <h3 style="font-size:14px; margin-top:14px;">Subtitle Rows</h3>
+          <table class="subtitle-table" id="subtitle-table" style="display:none;">
+            <thead><tr><th>Start</th><th>End</th><th>Text</th></tr></thead>
+            <tbody id="subtitle-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const logEl = document.getElementById('log');
+      const draftsListEl = document.getElementById('drafts-list');
+      const subtitleTableEl = document.getElementById('subtitle-table');
+      const subtitleBodyEl = document.getElementById('subtitle-body');
+      const selectedMetaEl = document.getElementById('selected-meta');
+      const saveBtn = document.getElementById('save-subtitles-btn');
+      const renderBtn = document.getElementById('render-final-btn');
+      const playersEl = document.getElementById('players');
+      const draftVideo = document.getElementById('draft-video');
+      const finalVideo = document.getElementById('final-video');
+
+      let drafts = [];
+      let selectedDraft = null;
+      let subtitleRows = [];
+
+      const setLog = (text) => { logEl.textContent = text; };
+      const pretty = (obj) => JSON.stringify(obj, null, 2);
+
+      async function api(url, options = {}) {
+        const res = await fetch(url, options);
+        const ct = res.headers.get('content-type') || '';
+        const body = ct.includes('application/json') ? await res.json() : await res.text();
+        if (!res.ok) {
+          throw new Error(typeof body === 'string' ? body : pretty(body));
+        }
+        return body;
+      }
+
+      function renderDrafts() {
+        draftsListEl.innerHTML = '';
+        if (!drafts.length) {
+          draftsListEl.innerHTML = '<p class="muted">No drafts yet.</p>';
+          return;
+        }
+
+        drafts.forEach((d) => {
+          const div = document.createElement('div');
+          div.className = 'draft-row' + (selectedDraft?.draft_id === d.draft_id ? ' active' : '');
+          div.innerHTML = `
+            <div class="row" style="justify-content:space-between;">
+              <strong>${d.draft_id.slice(0, 8)}...</strong>
+              <span class="pill">${d.status}</span>
+            </div>
+            <div class="muted" style="margin:4px 0;">Day ${d.metadata.request.day} · ${d.metadata.request.surah_number}:${d.metadata.request.ayah_start}-${d.metadata.request.ayah_end}</div>
+            <div class="row">
+              <button class="ghost" data-open="${d.draft_id}">Open</button>
+            </div>
+          `;
+          draftsListEl.appendChild(div);
+        });
+
+        draftsListEl.querySelectorAll('[data-open]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await openDraft(btn.getAttribute('data-open'));
+          });
+        });
+      }
+
+      function renderSubtitleRows() {
+        subtitleBodyEl.innerHTML = '';
+        if (!subtitleRows.length) {
+          subtitleTableEl.style.display = 'none';
+          return;
+        }
+        subtitleTableEl.style.display = '';
+
+        subtitleRows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><input data-k="start" data-i="${idx}" type="number" step="0.01" value="${row.start ?? 0}" /></td>
+            <td><input data-k="end" data-i="${idx}" type="number" step="0.01" value="${row.end ?? 0}" /></td>
+            <td class="text-cell"><input data-k="text" data-i="${idx}" value="${(row.text || '').replace(/"/g, '&quot;')}" /></td>
+          `;
+          subtitleBodyEl.appendChild(tr);
+        });
+
+        subtitleBodyEl.querySelectorAll('input').forEach((input) => {
+          input.addEventListener('input', () => {
+            const i = Number(input.dataset.i);
+            const k = input.dataset.k;
+            const v = input.value;
+            subtitleRows[i][k] = (k === 'text') ? v : Number(v);
+          });
+        });
+      }
+
+      async function loadDrafts() {
+        drafts = await api('/drafts');
+        renderDrafts();
+      }
+
+      async function openDraft(draftId) {
+        selectedDraft = await api(`/draft/${draftId}`);
+        selectedMetaEl.textContent = `Draft ${selectedDraft.draft_id} · ${selectedDraft.status}${selectedDraft.running ? ' · Running' : ''}`;
+        saveBtn.disabled = false;
+        renderBtn.disabled = false;
+
+        const smEdited = selectedDraft.artifact_urls.subtitle_map_edited;
+        const sm = selectedDraft.artifact_urls.subtitle_map;
+        let map = { chunks: [] };
+        try { map = await api(smEdited); } catch (_) { map = await api(sm); }
+        subtitleRows = Array.isArray(map.chunks) ? map.chunks : [];
+        renderSubtitleRows();
+
+        draftVideo.src = selectedDraft.artifact_urls.draft_video;
+        finalVideo.src = selectedDraft.artifact_urls.final_video;
+        playersEl.style.display = '';
+
+        await loadDrafts();
+      }
+
+      document.getElementById('refresh-btn').addEventListener('click', async () => {
+        try {
+          await loadDrafts();
+          setLog('Draft list refreshed.');
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      document.getElementById('sync-btn').addEventListener('click', async () => {
+        try {
+          const markers = JSON.parse(document.getElementById('sync-markers').value || '[]');
+          const payload = {
+            day: Number(document.getElementById('sync-day').value),
+            source_url: document.getElementById('sync-source-url').value || null,
+            full_refresh: true,
+            markers,
+          };
+          const out = await api('/markers/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      document.getElementById('generate-btn').addEventListener('click', async () => {
+        try {
+          const payload = {
+            day: Number(document.getElementById('gen-day').value),
+            surah_number: Number(document.getElementById('gen-surah').value),
+            ayah_start: Number(document.getElementById('gen-ayah-start').value),
+            ayah_end: Number(document.getElementById('gen-ayah-end').value),
+            clip_start: Number(document.getElementById('gen-clip-start').value),
+            duration: Number(document.getElementById('gen-duration').value),
+            sheikh: document.getElementById('gen-sheikh').value || null,
+            youtube_url: document.getElementById('gen-youtube-url').value || null,
+            source_video_path: document.getElementById('gen-source-path').value || null,
+            align_subtitles: document.getElementById('gen-align-subtitles').checked,
+          };
+          const out = await api('/draft/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+          await openDraft(out.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        if (!selectedDraft) return;
+        try {
+          const payload = { draft_id: selectedDraft.draft_id, chunks: subtitleRows };
+          const out = await api('/draft/update-subtitles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+          await openDraft(selectedDraft.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      renderBtn.addEventListener('click', async () => {
+        if (!selectedDraft) return;
+        try {
+          const payload = { draft_id: selectedDraft.draft_id };
+          const out = await api('/render/final', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          setLog(pretty(out));
+          await openDraft(selectedDraft.draft_id);
+        } catch (err) {
+          setLog(String(err));
+        }
+      });
+
+      loadDrafts().catch((err) => setLog(String(err)));
+      setInterval(async () => {
+        try {
+          if (selectedDraft) {
+            await openDraft(selectedDraft.draft_id);
+          } else {
+            await loadDrafts();
+          }
+        } catch (_) {}
+      }, 8000);
+    </script>
+  </body>
+</html>

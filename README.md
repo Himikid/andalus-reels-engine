@@ -11,11 +11,13 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - Marker sync endpoint for external website repo push
 - Subtitle map update API (JSON payload, no file upload)
 - Artifact streaming endpoint
+- Built-in browser UI at `/` for full local workflow
 - Docker and docker-compose
 
 ## API
 
 - `GET /health`
+- `GET /` (local UI)
 - `POST /markers/sync`
 - `POST /draft/generate`
 - `POST /draft/update-subtitles`
@@ -63,11 +65,21 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
+Open:
+
+- UI: `http://localhost:8090/`
+- API docs: `http://localhost:8090/docs`
+
 ## Run with Docker
 
 ```bash
 docker compose up --build
 ```
+
+Open:
+
+- UI: `http://localhost:8090/`
+- API docs: `http://localhost:8090/docs`
 
 ## Example marker sync
 
@@ -86,6 +98,6 @@ curl -X POST http://localhost:8090/markers/sync \
 
 ## Notes
 
-- This scaffold is intentionally backend-only (no frontend).
+- UI is intentionally minimal and local-first; no separate frontend build step.
 - Pipeline first tries `scripts/make_reel.py`; if unavailable or failing, it falls back to ffmpeg-based preview/final rendering.
 - Final renders are immutable by draft, and can be cleaned up externally by client policy.
