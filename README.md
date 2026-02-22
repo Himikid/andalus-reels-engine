@@ -1,42 +1,93 @@
 # andalus-reels-engine
 
-FastAPI local backend for generating vertical Taraweeh reels from synced ayah markers.
+A local-first FastAPI engine for generating vertical Taraweeh reels with a clean human-in-the-loop workflow.
 
-## What this scaffold includes
+## At a glance
 
-- Filesystem-only storage (`data/markers`, `data/drafts`, no DB)
-- Single worker background jobs (generate + final render)
-- Deterministic draft dedupe by request hash
-- Draft state machine and metadata persistence
-- Marker sync endpoint for external website repo push
-- Local bundle import for offline sync (`/sync/import-local` + `scripts/import_sync_bundle.py`)
-- Subtitle map update API (JSON payload, no file upload)
-- Ayah timing adjustment step before subtitle preparation
-- Chained multi-segment reels across days/surahs with transitions
-- Verified subtitle memory for reused ayah subtitle work
-- Artifact streaming endpoint
-- Built-in browser UI at `/` for full local workflow
-- UI preview is audio-only during draft stage for cleaner review
-- UI includes final render download action
-- Single active draft session per server instance (one-at-a-time workflow)
-- Final render uses `scripts/make_reel.py` (clean + fit) with edited subtitle map input for legacy-consistent subtitle styling
-- UI includes CLI-style progress bar and favorites queue launcher
-- UI auto-estimates clip start/duration/source from synced markers (no manual marker JSON paste)
-- Source resolution is server-owned: sync provides URL references, and engine uses its own local cache directory.
-- Docker and docker-compose
+| Area | What it gives you |
+| --- | --- |
+| Draft workflow | Select ayat -> tune timing -> subtitle edit -> final render |
+| Render quality | Uses `scripts/make_reel.py` pipeline for stylized output |
+| Storage model | Filesystem only (`data/*`), no database |
+| Runtime model | Single-worker, one active draft session per server |
+| Sync model | Offline bundle import from website repo |
+| Ops model | Docker-first, local network trusted |
 
-## API
+## Core capabilities
+
+- One-at-a-time draft session to keep operations simple and predictable.
+- Ayah timing adjustment step before subtitle preparation.
+- Subtitle row editing as structured JSON rows (no manual file uploads).
+- Final render download flow with immutable artifact output per draft.
+- Favorites sync + queue generation (day-based ayat/dua reel prep).
+- Local cache ownership for source media resolution.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Website Repo Export Script] -->|sync bundle json| B[Local inbox bundle]
+    B --> C[/sync/import-local]
+    C --> D[data/markers]
+    C --> E[data/summaries]
+    C --> F[data/favorites]
+
+    D --> G[Draft Generate]
+    E --> G
+    F --> H[Queue Build]
+
+    G --> I[Ayah Timing Map]
+    I --> J[Prepare Audio + Subtitle Map]
+    J --> K[Subtitle Edit]
+    K --> L[Render Final]
+    L --> M[final.mp4]
+```
+
+## Repository layout
+
+```text
+andalus-reels-engine/
+├─ app/
+│  ├─ api/routes/                # FastAPI route groups
+│  ├─ services/                  # Marker, draft, subtitle, render orchestration
+│  ├─ models/                    # Pydantic schemas
+│  └─ web/index.html             # Built-in operator UI
+├─ scripts/
+│  ├─ make_reel.py               # Stylized reel render pipeline
+│  └─ import_sync_bundle.py      # CLI bundle import helper
+├─ data/
+│  ├─ markers/
+│  ├─ summaries/
+│  ├─ favorites/
+│  ├─ queue/
+│  ├─ drafts/
+│  └─ cache/videos/
+├─ Dockerfile
+├─ docker-compose.yml
+└─ requirements.txt
+```
+
+## API surface
+
+### Health and UI
 
 - `GET /health`
-- `GET /` (local UI)
-- `POST /markers/sync`
+- `GET /`
+
+### Sync and indexing
+
 - `POST /sync/import-local`
+- `POST /markers/sync`
+- `GET /markers/available`
+- `GET /markers/day/{day}/index`
+- `POST /summaries/sync`
 - `POST /favorites/sync`
 - `GET /favorites`
 - `POST /queue/from-favorites`
 - `GET /queue/current`
-- `GET /markers/available`
-- `GET /markers/day/{day}/index`
+
+### Draft lifecycle
+
 - `POST /draft/generate`
 - `GET /draft/current`
 - `GET /draft/estimate`
@@ -44,56 +95,62 @@ FastAPI local backend for generating vertical Taraweeh reels from synced ayah ma
 - `POST /draft/prepare-subtitles`
 - `POST /draft/update-subtitles`
 - `POST /render/final`
+- `GET /draft/{draft_id}`
 - `DELETE /draft/{draft_id}`
 - `DELETE /drafts/completed`
-- `GET /draft/{draft_id}`
-- `GET /drafts`
-- `GET /subtitles/verified`
 - `GET /draft/{draft_id}/artifact/{artifact_name}`
 
-## Draft layout
+## Draft state model
 
-`data/drafts/{draft_id}/`
+```text
+created -> ready_for_timing -> generating -> ready_for_edit -> rendering_final -> completed
+                                 \-> failed
+```
 
-- `metadata.json`
-- `draft.mp4`
-- `audio.wav`
-- `subtitle_map.json`
-- `subtitle_map_edited.json`
-- `final.mp4`
+## Artifacts per draft
 
-## Status model
+Each draft has its own isolated folder:
 
-`created -> ready_for_timing -> generating -> ready_for_edit -> rendering_final -> completed`
+```text
+data/drafts/{draft_id}/
+├─ metadata.json
+├─ ayah_timing_map.json
+├─ ayah_timing_map_edited.json
+├─ draft.mp4
+├─ audio.wav
+├─ subtitle_map.json
+├─ subtitle_map_edited.json
+└─ final.mp4
+```
 
-and terminal `failed`.
+## Operator workflow
 
-## Draft workflow
+1. Create draft from selected day/surah/ayah range.
+2. Adjust ayah timing rows (`start`, `end`).
+3. Prepare draft audio + subtitle map.
+4. Edit subtitle chunks.
+5. Render final reel.
+6. Download `final.mp4`.
 
-1. Generate draft request (`POST /draft/generate`) to create draft + ayah timing map.
-2. Adjust ayah start/end rows in UI and save (`POST /draft/update-ayah-timings`).
-3. Prepare audio/subtitles (`POST /draft/prepare-subtitles`).
-4. Edit subtitle rows (`POST /draft/update-subtitles`).
-5. Render final (`POST /render/final`) and download final MP4.
+## Quick start (Docker)
 
-`POST /draft/generate` returns the current active draft if one already exists.
+```bash
+cd /Users/himi/Documents/firebase/andalus-reels-engine
+docker compose up --build -d
+```
 
-## Deduplication
+Open:
 
-`POST /draft/generate` computes request hash from:
+- UI: `http://localhost:8090/`
+- API docs: `http://localhost:8090/docs`
 
-- `day`
-- `surah_number`
-- `ayah_start`
-- `ayah_end`
-- `clip_start`
-- `duration`
+Stop:
 
-If hash exists, server returns the existing draft.
+```bash
+docker compose down
+```
 
-For chained requests, hash is computed from all segment keys in order.
-
-## Run locally
+## Quick start (local Python)
 
 ```bash
 cd /Users/himi/Documents/firebase/andalus-reels-engine
@@ -103,25 +160,9 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8090
 ```
 
-Open:
+## Offline sync workflow
 
-- UI: `http://localhost:8090/`
-- API docs: `http://localhost:8090/docs`
-
-## Run with Docker
-
-```bash
-docker compose up --build
-```
-
-Open:
-
-- UI: `http://localhost:8090/`
-- API docs: `http://localhost:8090/docs`
-
-## Offline sync (no cross-repo HTTP)
-
-From website repo, export bundle:
+### 1) Export bundle from website repo
 
 ```bash
 python3 /Users/himi/Documents/firebase/andalus-taraweeh/scripts/sync_reels_engine.py \
@@ -129,14 +170,16 @@ python3 /Users/himi/Documents/firebase/andalus-taraweeh/scripts/sync_reels_engin
   --bundle-out /Users/himi/Documents/firebase/andalus-reels-engine/data/inbox/sync_bundle.json
 ```
 
-Then import bundle inside reels engine:
+### 2) Import bundle into reels engine
+
+CLI method:
 
 ```bash
 cd /Users/himi/Documents/firebase/andalus-reels-engine
 python3 scripts/import_sync_bundle.py --bundle data/inbox/sync_bundle.json
 ```
 
-Or call the local API from the same machine:
+API method:
 
 ```bash
 curl -X POST http://localhost:8090/sync/import-local \
@@ -144,23 +187,53 @@ curl -X POST http://localhost:8090/sync/import-local \
   -d '{"bundle_path":"data/inbox/sync_bundle.json"}'
 ```
 
-## Direct marker sync (optional)
+## Queue flow for favorites
+
+- Sync favorites from website day highlights.
+- Pick day in UI (`Favorites Day`).
+- Load selected day into chain.
+- Generate and process as normal draft flow.
+
+## Rendering notes
+
+- Final render path uses `scripts/make_reel.py` for stylized output (legacy-consistent visual style).
+- If `make_reel.py` fails at runtime, fallback rendering may produce plain output.
+- Keep `scripts/make_reel.py` dependencies healthy (`ffmpeg`, `rapidfuzz`, `Pillow`, etc.) to preserve styled renders.
+
+## Operational notes
+
+- Server is local and designed for trusted local-network use.
+- Laptop sleep pauses Docker containers; use an always-on machine for uninterrupted service.
+- Final artifacts are immutable per draft; cleanup is explicit via delete endpoints.
+
+## Troubleshooting
+
+### UI shows plain video (no styled overlays)
+
+- Confirm final render path executed `make_reel.py` successfully.
+- Check container logs:
 
 ```bash
-curl -X POST http://localhost:8090/markers/sync \
-  -H "Content-Type: application/json" \
-  -d '{
-    "day": 4,
-    "source_url": "https://youtube.com/watch?v=QxnylahNG_U",
-    "full_refresh": true,
-    "markers": [
-      {"time": 1530, "surah": "Aal-i-Imran", "ayah": 92, "surah_number": 3}
-    ]
-  }'
+docker compose logs -f
 ```
 
-## Notes
+### Queue appears empty
 
-- UI is intentionally minimal and local-first; no separate frontend build step.
-- Pipeline first tries `scripts/make_reel.py`; if unavailable or failing, it falls back to ffmpeg-based preview/final rendering.
-- Final renders are immutable by draft, and can be cleaned up externally by client policy.
+- Verify favorites exist:
+
+```bash
+curl -s http://localhost:8090/favorites
+```
+
+- Rebuild queue:
+
+```bash
+curl -X POST http://localhost:8090/queue/from-favorites \
+  -H "Content-Type: application/json" \
+  -d '{"days":[1,2,3,4],"include_theme_types":["Dua","Famous Ayah"],"full_refresh":true}'
+```
+
+### No active draft appears
+
+- Drafts are single-session by design.
+- If session was deleted/completed, create a new draft from UI.
